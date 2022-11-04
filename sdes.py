@@ -7,9 +7,8 @@ import torch
 #----------------------------------------------
 
 class SDE(): 
-    def _init_(self,device): 
+    def __init__(self,device): 
         self.device = device
-        pass
     
     def simp_marginal_prob_std(self,t,sigma):
         t = torch.tensor(t, device=self.device)
