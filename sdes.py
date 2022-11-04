@@ -10,36 +10,36 @@ class SDE():
     def __init__(self,device): 
         self.device = device
     
-    def simp_marginal_prob_std(self,t,sigma):
+    def simp_marginal_prob_std(t,sigma):
         t = torch.tensor(t, device=self.device)
         std = torch.sqrt((sigma**(2 * t) - 1.) / (2. * np.log(sigma)))
         return std
     
-    def simp_diffusion_coeff(self,t,sigma):
+    def simp_diffusion_coeff(t,sigma):
         return torch.tensor(sigma**t, self.device)
     
-    def ve_marginal_prob_std(self,t,sigma_min,sigma_max):
+    def ve_marginal_prob_std(t,sigma_min,sigma_max):
         std = sigma_min * (sigma_max / sigma_min) ** t
         return std
 
-    def ve_diffusion_coeff(self,t,sigma_min,sigma_max): 
+    def ve_diffusion_coeff(t,sigma_min,sigma_max): 
         sigma = sigma_min * (sigma_max / sigma_min) ** t
         diffusion = sigma * torch.sqrt(torch.tensor(2 * (np.log(sigma_max) - np.log(sigma_min)),
                                                     device=t.device))
         return diffusion
     
-    def subvp_marginal_prob_std(self,t, beta_min, beta_max):
+    def subvp_marginal_prob_std(t, beta_min, beta_max):
         log_mean_coeff = -0.25 * t ** 2 * (beta_max - beta_min) - 0.5 * t * beta_min
         std = 1 - torch.exp(2. * log_mean_coeff)
         return std
 
-    def subvp_diffusion_coeff(self,t, beta_min, beta_max):
+    def subvp_diffusion_coeff(t, beta_min, beta_max):
         beta_t = beta_min + t * (beta_max - beta_min)
         discount = 1. - torch.exp(-2 * beta_min * t - (beta_max - beta_min) * t ** 2)
         diffusion = torch.sqrt(beta_t * discount)
         return diffusion
 
-    def subvp_drift_coeff(self,t, x, beta_min, beta_max):
+    def subvp_drift_coeff(t, x, beta_min, beta_max):
         beta_t = beta_min + t * (beta_max - beta_min)
         if beta_t.dim() == 0:
             drift = -0.5 * beta_t * x
@@ -47,17 +47,17 @@ class SDE():
             drift = -0.5 * beta_t[:, None, None, None] * x
         return drift
     
-    def vp_marginal_prob_std(self,t, beta_min, beta_max):
+    def vp_marginal_prob_std(t, beta_min, beta_max):
         log_mean_coeff = -0.25 * t ** 2 * (beta_max - beta_min) - 0.5 * t * beta_min
         std = torch.sqrt(1. - torch.exp(2. * log_mean_coeff))
         return std
 
-    def vp_diffusion_coeff(self,t, beta_min, beta_max):
+    def vp_diffusion_coeff(t, beta_min, beta_max):
         beta_t = beta_min + t * (beta_max - beta_min)
         diffusion = torch.sqrt(beta_t)
         return diffusion
 
-    def vp_drift_coeff(self,t, x, beta_min, beta_max):
+    def vp_drift_coeff(t, x, beta_min, beta_max):
         beta_t = beta_min + t * (beta_max - beta_min)
         if beta_t.dim() == 0:
             drift = -0.5 * beta_t * x
