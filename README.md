@@ -2,6 +2,6 @@
 
 Milestones
 - [x] Implement diffusion model
-- [ ] Implement denoising with Yang Song’s method
+- [x] Implement denoising with Yang Song’s method
 - [ ] Implement photoacoustic imaging with the measurement matrix
 - [ ] Implement photoacoustic imaging with the forward operator
