@@ -65,6 +65,27 @@ class SDE():
             drift = -0.5 * beta_t[:, None, None, None] * x
         return drift
 
+
+#----------------------------------------------
+#          Classic SDE (Classic)
+#----------------------------------------------
+class Classic():
+    def __init__(self):
+        pass
+
+    def marginal_prob_std(self, t, sigma):
+        var = torch.sqrt((sigma**(2 * t) - 1.) / (2. * np.log(sigma)))
+        return var
+
+    def drift_coeff(self, x, t, sigma):
+        drift = torch.zeros_like(torch.tensor(x, device=t.device))
+        return drift
+
+    def diffusion_coeff(self, t, sigma):
+        diffusion = torch.tensor(sigma**t, device=t.device)
+        return coeffs
+
+
 #----------------------------------------------
 #          Variance Exploding (VE)
 #----------------------------------------------
@@ -97,22 +118,25 @@ class VariancePreserving():
     def __init__(self):
         pass
     
-    def marginal_prob_std(t,sigma):
-        t = torch.tensor(t, device=device)
-        var = torch.sqrt((sigma**(2 * t) - 1.) / (2. * np.log(sigma)))
-        return var 
+    def marginal_prob_std(self, t, beta_min, beta_max):
+        coeff = -0.25 * t ** 2 * (beta_max - beta_min) - 0.5 * t * beta_min
+        #mean = torch.exp(coeff) * x
+        var = torch.sqrt(1 - torch.exp(2. * coeff))
+        return var
 
-    def diffusion_coeff(t, sigma): 
-        return torch.tensor(sigma**t, device=device)
+    def drift_coeff(self, x, t, beta_min, beta_max):
+        # def of beta_t from Yang Song's repo score_sde
+        beta_t = beta_min + t * (beta_max - beta_min)
+        if (beta_t.dim() == 1) and (x.dim() > 1):
+            beta_t = beta_t[:, None, None, None]
+        drift = -.5 * beta_t * x
+        return drift
 
-    def loss_fn(model, x, marginal_prob_std, eps=1e-5):
-        random_t = torch.rand(x.shape[0], device=x.device) * (1. - eps) + eps  
-        z = torch.randn_like(x)
-        std = marginal_prob_std(t=random_t)
-        perturbed_x = x + z * std[:, None, None, None]
-        score = model(perturbed_x, random_t)
-        loss = torch.mean(torch.sum((score * std[:, None, None, None] + z)**2, dim=(1,2,3)))
-        return loss
+    def diffusion_coeff(self, t, beta_min, beta_max):
+        # def of beta_t from Yang Song's repo score_sde
+        beta_t = beta_min + t * (beta_max - beta_min)
+        diffusion = torch.sqrt(beta_t)
+        return diffusion
 
 
 #----------------------------------------------
@@ -122,14 +146,23 @@ class SubVariancePreserving():
     def __init__(self):
         pass
     
-    def marginal_prob_std(self, t, sigma_min, sigma_max):
-        var = None
+    def marginal_prob_std(self, t, beta_min, beta_max):
+        coeff = -0.25 * t ** 2 * (beta_max - beta_min) - 0.5 * t * beta_min
+        #mean = torch.exp(coeff) * x
+        var = 1 - torch.exp(2. * coeff)
         return var
 
-    def drift_coeff(self, x, t, sigma_min, sigma_max):
-        drift = None
+    def drift_coeff(self, x, t, beta_min, beta_max):
+        # def of beta_t from Yang Song's repo score_sde
+        beta_t = beta_min + t * (beta_max - beta_min)
+        if (beta_t.dim() == 1) and (x.dim() > 1):
+            beta_t = beta_t[:, None, None, None]
+        drift = -.5 * beta_t * x
         return drift
 
-    def diffusion_coeff(self, t, sigma_min, sigma_max):
-        diffusion = None
+    def diffusion_coeff(self, t, beta_min, beta_max):
+        # def of beta_t from Yang Song's repo score_sde
+        beta_t = beta_min + t * (beta_max - beta_min)
+        discount = 1. - torch.exp(-2 * beta_min * t - (beta_max - beta_min) * t ** 2)
+        diffusion = torch.sqrt(beta_t * discount)
         return diffusion
