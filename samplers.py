@@ -45,10 +45,22 @@ def lbda_scheduler(t, lbda, schedule="constant", param=1):
 
     return lbda
 
-def condition_on_y(raw_images, x_t, t, marginal_prob_std, lbda=.5, lbda_param=1):
+def condition_on_y(raw_images, x_t, t, marginal_prob_std, lbda=.5, lbda_param=1, lbda_schedule='constant'):
     y_t = get_y_t(raw_images, t, marginal_prob_std)
-    lbda = lbda_scheduler(t, lbda, schedule="constant", param=lbda_param)
+    lbda = lbda_scheduler(t, lbda, schedule=lbda_schedule, param=lbda_param)
     x_t_prime = lbda * y_t + (1 - lbda) * x_t
+    return x_t_prime
+
+def condition_on_inpainted_y(raw_images, x_t, t, marginal_prob_std, lbda=.5, lbda_param=1, lbda_schedule='constant'):
+    y_t = get_y_t(raw_images, t, marginal_prob_std)
+    lbda = lbda_scheduler(t, lbda, schedule=lbda_schedule, param=lbda_param)
+    P, T = [torch.eye(im_size*im_size,device=device)] * 2
+    # turn images into column vectors
+    flat_y_t = torch.unsqueeze(torch.flatten(y_t, start_dim=1), dim=2).shape
+    flat_x_t = torch.unsqueeze(torch.flatten(x_t, start_dim=1), dim=2).shape
+    y_influence = lbda * torch.matmul(lbda, torch.matmul(torch.inverse(P), flat_y_t))
+    x_influence = (1 - lbda) * torch.matmul(lbda, torch.matmul(T, flat_x_t))
+    x_t_prime = torch.reshape(y_influence + x_influence, x_t.shape)
     return x_t_prime
 
 #----------------------------------------------
@@ -61,9 +73,10 @@ def pc_denoiser(raw_images,
                marginal_prob_std,
                diffusion_coeff,
                drift_coeff=None,
+               task='denoise',
                lbda_schedule='constant',
                lbda_param=1,
-               num_steps=500, 
+               num_steps=500,
                snr=0.16,                
                device='cuda',
                eps=1e-3):
@@ -92,7 +105,12 @@ def pc_denoiser(raw_images,
                 x_mean = x + ( -1 * f + ((g**2)[:, None, None, None] * score_model(x, batch_time_step)) ) * step_size
 
             # Condition on y_t
-            x_mean = condition_on_y(raw_images, x_mean, time_step, marginal_prob_std, lbda, lbda_param)
+            if task == 'denoise':
+                x_mean = condition_on_y(raw_images, x_mean, time_step, marginal_prob_std, lbda, lbda_param, lbda_schedule)
+            elif task == 'depaint':
+                x_mean = condition_on_inpainted_y(raw_images, x_mean, time_step, marginal_prob_std, lbda, lbda_param, lbda_schedule)
+            elif task == 'defat':
+                pass
 
             x = x_mean + torch.sqrt(g**2 * step_size)[:, None, None, None] * torch.randn_like(x)
 
@@ -128,7 +146,13 @@ def Euler_Maruyama_denoiser(raw_images,
                 mean_x = x + ( -1 * f + ((g**2)[:, None, None, None] * score_model(x, batch_time_step)) ) * step_size
             
             # Condition on y_t
-            mean_x = condition_on_y(raw_images, x_mean, time_step, marginal_prob_std, lbda, lbda_param)
+            if task == 'denoise':
+                x_mean = condition_on_y(raw_images, x_mean, time_step, marginal_prob_std, lbda, lbda_param, lbda_schedule)
+            elif task == 'depaint':
+                x_mean = condition_on_inpainted_y(raw_images, x_mean, time_step, marginal_prob_std, lbda, lbda_param, lbda_schedule)
+            elif task == 'defat':
+                pass
+            
             x = mean_x + torch.sqrt(step_size) * g[:, None, None, None] * torch.randn_like(x)      
     # Do not include any noise in the last sampling step.
     return mean_x
