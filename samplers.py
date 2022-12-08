@@ -107,6 +107,12 @@ def condition_on_pat_y(raw_images, x_t, t, marginal_prob_std, operator_P, subsam
     x_t_prime = torch.reshape(x_t_prime, x_t.shape)
     return x_t_prime
 
+def psnr(clean, noisy):
+    # our range of values is [0.,1.]
+    eps = 1e-8
+    mse = torch.mean((clean - noisy) ** 2)
+    return - 10 * torch.log10(mse + eps)
+
 #----------------------------------------------
 #          Samplers for denoising 
 #----------------------------------------------
@@ -124,6 +130,8 @@ def pc_denoiser(raw_images,
                subsampling_L=None,
                transformation_T=None,
                num_steps=500,
+               report_PSNR=False,
+               clean_images=None,
                snr=0.16,                
                device='cuda',
                eps=1e-3):
@@ -133,6 +141,7 @@ def pc_denoiser(raw_images,
     time_steps = np.linspace(1., eps, num_steps)
     step_size = time_steps[0] - time_steps[1]
     x = init_x
+    if report_PSNR == True: metrics=[]
     with torch.no_grad():
         for time_step in tqdm.notebook.tqdm(time_steps):      
             batch_time_step = torch.ones(num_images, device=device) * time_step
@@ -161,9 +170,16 @@ def pc_denoiser(raw_images,
             elif task == 'depat':
                 x_mean = condition_on_pat_y(raw_images, x_mean, time_step, marginal_prob_std, operator_P, subsampling_L, transformation_T, lbda, lbda_param, lbda_schedule)
 
+            # Compute metrics
+            if report_PSNR == True:
+                
+                metrics.append([psnr(torch.squeeze(clean), torch.squeeze(noisy)).item() for (clean, noisy) in zip(clean_images,x_mean)])
+                
             x = x_mean + torch.sqrt(g**2 * step_size)[:, None, None, None] * torch.randn_like(x)
 
     # The last step does not include any noise
+    if report_PSNR == True:
+        return (x_mean, metrics)
     return x_mean
 
 
@@ -178,7 +194,8 @@ def Euler_Maruyama_denoiser(raw_images,
                            operator_P=None,
                            subsampling_L=None,
                            transformation_T=None,
-                           num_steps=500, 
+                           num_steps=500,
+                           report_PSNR=False,
                            device='cuda', 
                            eps=1e-3):
     num_images = len(raw_images)
