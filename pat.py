@@ -17,6 +17,7 @@
 # This code is used for the course CS101 only.
 
 import numpy as np
+import tqdm
 from scipy.fft import fft, ifft
 import scipy.signal as signal
 
@@ -140,7 +141,7 @@ def deltaThetaCDMMI(xs, ys, px, py, x_r, y_r, R):
 
     theta_range = angleRangeCDMMI(xs[0], xs[-1], ys[0], ys[-1], x_r, y_r, R)
     if theta_range.shape[0] == 0:
-    return (x_id, y_id, delta_theta)
+        return (x_id, y_id, delta_theta)
     # Calculate the angle range of the circle that intersect with the rectangle
     # field of view.
 
@@ -289,7 +290,7 @@ def forwardMatrixFullRingCDMMI(N_transducer, R_ring, px, py, M, N, dt, N_sample,
     A = np.zeros([M, N, N_transducer, t_over_sample.shape[0]])
     # Allocate space for the matrix
 
-    for r in range(0, N_transducer):
+    for r in tqdm.tqdm(range(0, N_transducer)):
         for t in range(0, t_over_sample.shape[0]):
             [x_id, y_id, delta_theta] = deltaThetaCDMMI(xs, ys, px, py, transducer_x[r], transducer_y[r], t_over_sample[t] * V_sound)
             for k in range(0, delta_theta.shape[0]):
@@ -306,7 +307,7 @@ def forwardMatrixFullRingCDMMI(N_transducer, R_ring, px, py, M, N, dt, N_sample,
 
     B = int(np.ceil(Band / (1 / dt_oversample / A.shape[-1])))
     window = np.zeros(A.shape[-1])
-    window[0:4 * B + 1] = signal.hanning(4 * B + 1)
+    window[0:4 * B + 1] = signal.windows.hann(4 * B + 1)
     window = np.roll(window, -2 * B)
 
     A = A * window
