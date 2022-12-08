@@ -54,7 +54,7 @@ def condition_on_y(raw_images, x_t, t, marginal_prob_std, lbda=.5, lbda_param=1,
 def condition_on_inpainted_y(raw_images, x_t, t, marginal_prob_std, lbda=.5, lbda_param=1, lbda_schedule='constant'):
     y_t = get_y_t(raw_images, t, marginal_prob_std)
     lbda = lbda_scheduler(t, lbda, schedule=lbda_schedule, param=lbda_param)
-    P, T = [torch.eye(im_size*im_size,device=device)] * 2
+    P, T = [torch.eye(raw_images.shape[-2] * raw_images.shape[-1],device=device)] * 2
     # turn images into column vectors
     flat_y_t = torch.unsqueeze(torch.flatten(y_t, start_dim=1), dim=2).shape
     flat_x_t = torch.unsqueeze(torch.flatten(x_t, start_dim=1), dim=2).shape
