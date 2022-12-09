@@ -1,7 +1,13 @@
-# CS 101 Project: Diffusion for Photoacoustic Imaging
+# Diffusion Score-Based Model for Photoacoustic Tomography (PAT)
 
-Milestones
-- [x] Implement diffusion model
-- [x] Implement denoising with Yang Song’s method
-- [x] Implement photoacoustic imaging with the measurement matrix
-- [ ] Implement photoacoustic imaging with the forward operator
+This repo contains the code of the Diffusion Score-Based Model for PAT project for Caltech's CS101, Fall 2022.
+
+Authors: [Laure Delisle](https://github.com/laure-delisle), [Sreemanti Dey](https://github.com/sreemanti-dey), [Snigdha Saha](https://github.com/snigdhasaha7). 
+Mentors: [Dr. Katie Bouman](http://users.cms.caltech.edu/~klbouman/), [Dr. Oscar Leong](https://www.oscarleong.com/home), [Berthy Feng](https://www.berthyfeng.com/), Manxiu Cui
+
+--------------------
+
+We apply the concept of Score-Based generative models using stochastic differential equations to the space of inverse problems. Specifically, we solve the toy problems of denoising, inpainting, and Gaussian downsampling. Then, we apply our approach to image reconstruction in Photoacoustic Tomography. 
+
+We provide a showcase of our work and results in (work_showcase.ipynb)[https://github.com/snigdhasaha7/diffusion-for-photoacoustic/blob/main/work_showcase.ipynb]. We suggest running the .ipynb in [Google Colab](https://githubtocolab.com/snigdhasaha7/diffusion-for-photoacoustic/blob/main/work_showcase.ipynb), but this can also be run locally.
+
