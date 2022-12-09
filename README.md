@@ -10,5 +10,5 @@ Mentors: [Dr. Katie Bouman](http://users.cms.caltech.edu/~klbouman/), [Dr. Oscar
 
 We apply the concept of Score-Based generative models using stochastic differential equations to the space of inverse problems. Specifically, we solve the toy problems of denoising, inpainting, and Gaussian downsampling. Then, we apply our approach to image reconstruction in Photoacoustic Tomography. 
 
-We provide a showcase of our work and results in (work_showcase.ipynb)[https://github.com/snigdhasaha7/diffusion-for-photoacoustic/blob/main/work_showcase.ipynb]. We suggest running the .ipynb in [Google Colab](https://githubtocolab.com/snigdhasaha7/diffusion-for-photoacoustic/blob/main/work_showcase.ipynb), but this can also be run locally.
+We provide a showcase of our work and results in [work_showcase.ipynb](https://github.com/snigdhasaha7/diffusion-for-photoacoustic/blob/main/work_showcase.ipynb). We suggest running the .ipynb in [Google Colab](https://githubtocolab.com/snigdhasaha7/diffusion-for-photoacoustic/blob/main/work_showcase.ipynb), but this can also be run locally.
 
