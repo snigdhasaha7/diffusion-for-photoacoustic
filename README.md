@@ -3,6 +3,7 @@
 This repo contains the code of the Diffusion Score-Based Model for PAT project for Caltech's CS101, Fall 2022.
 
 Authors: [Laure Delisle](https://github.com/laure-delisle), [Sreemanti Dey](https://github.com/sreemanti-dey), [Snigdha Saha](https://github.com/snigdhasaha7). 
+
 Mentors: [Dr. Katie Bouman](http://users.cms.caltech.edu/~klbouman/), [Dr. Oscar Leong](https://www.oscarleong.com/home), [Berthy Feng](https://www.berthyfeng.com/), Manxiu Cui
 
 --------------------
