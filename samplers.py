@@ -42,6 +42,12 @@ def lbda_scheduler(t, lbda, schedule="constant", param=1):
         param = torch.tensor(param)
         f_t = (torch.exp(param*t) - 1) / (torch.exp(param) - 1)
         lbda = lbda * f_t
+    elif schedule == "relu":
+        slope, pivot = param
+        lbda = max(0, slope * (t - pivot) * lbda)
+    elif schedule == "sigmoid":
+        slope, pivot = param
+        lbda = lbda / (1 + torch.exp(-slope  * (t - pivot)))
     
     return lbda
 
