@@ -4,6 +4,7 @@ import numpy as np
 from scipy import integrate
 from torchvision.utils import make_grid
 import matplotlib.pyplot as plt
+import IPython.display as ipd
 
 #----------------------------------------------
 #          Utils 
@@ -137,6 +138,7 @@ def pc_denoiser(raw_images,
                transformation_T=None,
                num_steps=500,
                report_PSNR=False,
+               ipython=False,
                clean_images=None,
                snr=0.16,                
                device='cuda',
@@ -148,6 +150,9 @@ def pc_denoiser(raw_images,
     step_size = time_steps[0] - time_steps[1]
     x = init_x
     if report_PSNR == True: metrics=[]
+    if ipython == True: 
+        plot_time_track = 0
+        plot_step = num_steps / 10 
     with torch.no_grad():
         for time_step in tqdm.notebook.tqdm(time_steps):      
             batch_time_step = torch.ones(num_images, device=device) * time_step
@@ -180,7 +185,16 @@ def pc_denoiser(raw_images,
             if report_PSNR == True:
                 
                 metrics.append([psnr(torch.squeeze(clean), torch.squeeze(noisy)).item() for (clean, noisy) in zip(clean_images,x_mean)])
-                
+            
+            if ipython == True:
+                if plot_time_track % plot_step == 0:
+                    ipd.clear_output(wait=True)
+                    fig = plt.imshow(x_mean.cpu()[0].squeeze())
+                    plt.title(f'Step: {time_step}')
+                    plt.colorbar()
+                    plt.show()
+                plot_time_track += 1
+
             x = x_mean + torch.sqrt(g**2 * step_size)[:, None, None, None] * torch.randn_like(x)
 
     # The last step does not include any noise
@@ -202,6 +216,7 @@ def Euler_Maruyama_denoiser(raw_images,
                            transformation_T=None,
                            num_steps=500,
                            report_PSNR=False,
+                           ipython=False,
                            device='cuda', 
                            eps=1e-3):
     num_images = len(raw_images)
@@ -211,6 +226,9 @@ def Euler_Maruyama_denoiser(raw_images,
     time_steps = torch.linspace(1., eps, num_steps, device=device)
     step_size = time_steps[0] - time_steps[1]
     x = init_x
+    if ipython == True: 
+        plot_time_track = 0
+        plot_step = num_steps / 10 
     with torch.no_grad():
         for time_step in tqdm.notebook.tqdm(time_steps):      
             batch_time_step = torch.ones(num_images, device=device) * time_step
@@ -231,6 +249,14 @@ def Euler_Maruyama_denoiser(raw_images,
             elif task == 'depat':
                 x_mean = condition_on_pat_y(raw_images, x_mean, time_step, marginal_prob_std, operator_P, subsampling_L, transformation_T, lbda, lbda_param, lbda_schedule)
 
+            if ipython == True:
+                if plot_time_track % plot_step == 0:
+                    ipd.clear_output(wait=True)
+                    fig = plt.imshow(x_mean.cpu()[0].squeeze())
+                    plt.title(f'Step: {time_step}')
+                    plt.colorbar()
+                    plt.show()
+                plot_time_track += 1
             
             x = mean_x + torch.sqrt(step_size) * g[:, None, None, None] * torch.randn_like(x)      
     # Do not include any noise in the last sampling step.
