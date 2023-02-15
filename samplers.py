@@ -191,7 +191,7 @@ def pc_denoiser(raw_images,
                 metrics.append([psnr(torch.squeeze(clean), torch.squeeze(noisy)).item() for (clean, noisy) in zip(clean_images,x_mean)])
             
             if ipython == True:
-                if plot_time_track % plot_step == 0 or plot_time_track <= (num_steps - 10):
+                if plot_time_track % plot_step == 0 or plot_time_track >= (num_steps - 10):
                     ipd.clear_output(wait=True)
                     fig = plt.imshow(x_mean.cpu()[0].squeeze())
                     plt.title(f'Step: {time_step}')
@@ -254,7 +254,7 @@ def Euler_Maruyama_denoiser(raw_images,
                 x_mean = condition_on_pat_y(raw_images, x_mean, time_step, marginal_prob_std, operator_P, subsampling_L, transformation_T, lbda, lbda_param, lbda_schedule)
 
             if ipython == True:
-                if plot_time_track % plot_step == 0 or plot_time_track <= (num_steps - 10):
+                if plot_time_track % plot_step == 0 or plot_time_track >= (num_steps - 10):
                     ipd.clear_output(wait=True)
                     fig = plt.imshow(x_mean.cpu()[0].squeeze())
                     plt.title(f'Step: {time_step}')
