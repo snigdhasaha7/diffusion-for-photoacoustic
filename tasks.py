@@ -61,7 +61,7 @@ def gaussian_downsampling(images, keep_ratio=0.95):
     return gauss_down_images, P, L, T
 
 # Set up PAT
-def PAT_forward(images, PAT_config):
+def PAT_forward(images, PAT_config, add_noise=False, noise=0.0):
     A, _, _, _ = forwardMatrixFullRingCDMMI(*PAT_config)
     # the data acquisition matrix T is A^t
     T = torch.tensor(A.T, device=images.device).float()
@@ -72,6 +72,8 @@ def PAT_forward(images, PAT_config):
     PAT_images = torch.zeros(images.shape[0], A.shape[0], 1, device=images.device)
     for i in range(len(images)):
         PAT_images[i] = torch.matmul(A, images[i].reshape((-1, 1)))
+        if add_noise:
+          PAT_images[i] = PAT_images[i] + noise * torch.randn_like(PAT_images[i])
     PAT_images = PAT_images.reshape(images.shape[0], 1, images.shape[-2], -1)
 
     return PAT_images, P, L, T
