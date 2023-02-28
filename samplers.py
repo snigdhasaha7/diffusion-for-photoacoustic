@@ -118,6 +118,25 @@ def condition_on_pat_y(raw_images, x_t, t, marginal_prob_std, operator_P, subsam
     x_t_prime = torch.reshape(x_t_prime, x_t.shape)
     return x_t_prime
 
+def condition_on_pat_y_modified(raw_images, x_t, t, marginal_prob_std, operator_P, subsampling_L, transformation_T, lbda=0.5, lbda_param=1, lbda_schedule='constant', a=0.5):
+    y_t = get_y_t(raw_images, t, marginal_prob_std)
+    lbda = lbda_scheduler(t, lbda, schedule=lbda_schedule, param=lbda_param)
+    P, L, T = operator_P, subsampling_L, transformation_T
+    A = torch.matmul(P, torch.matmul(L, T))
+
+    # turn images into column vectors
+    flat_y_t = torch.unsqueeze(torch.flatten(y_t, start_dim=1), dim=2)
+    flat_x_t = torch.unsqueeze(torch.flatten(x_t, start_dim=1), dim=2)
+
+    # x_prime is a weighted function of x and y
+    term1 = torch.inverse(torch.matmul(A.T, A) + a * torch.eye(A.shape[1], device=A.device))
+    term2 = torch.matmul(A.T, (1 - lbda) * torch.matmul(A, flat_x_t))
+    term3 = torch.matmul(A.T, lbda * flat_y_t)
+    x_t_prime = torch.matmul(term1, term2 + term3)
+
+    x_t_prime = torch.reshape(x_t_prime, x_t.shape)
+    return x_t_prime
+
 def psnr(clean, noisy):
     # our range of values is [0.,1.]
     eps = 1e-8
@@ -137,6 +156,7 @@ def pc_denoiser(raw_images,
                task='denoise',
                lbda_schedule='constant',
                lbda_param=1,
+               a=0.5,
                operator_P=None,
                subsampling_L=None,
                transformation_T=None,
@@ -184,6 +204,8 @@ def pc_denoiser(raw_images,
                 x_mean = condition_on_gauss_sub_y(raw_images, x_mean, time_step, marginal_prob_std, operator_P, subsampling_L, transformation_T, lbda, lbda_param, lbda_schedule)
             elif task == 'depat':
                 x_mean = condition_on_pat_y(raw_images, x_mean, time_step, marginal_prob_std, operator_P, subsampling_L, transformation_T, lbda, lbda_param, lbda_schedule)
+            elif task == 'depat_modified':
+                x_mean = condition_on_pat_y_modified(raw_images, x_mean, time_step, marginal_prob_std, operator_P, subsampling_L, transformation_T, lbda, lbda_param, lbda_schedule, a)
 
             # Compute metrics
             if report_PSNR == True:
@@ -205,7 +227,6 @@ def pc_denoiser(raw_images,
     if report_PSNR == True:
         return (x_mean, metrics)
     return x_mean
-
 
 def Euler_Maruyama_denoiser(raw_images,
                            score_model,
