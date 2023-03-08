@@ -61,10 +61,22 @@ def gaussian_downsampling(images, keep_ratio=0.95):
     return gauss_down_images, P, L, T
 
 # Set up PAT
-def PAT_forward(images, PAT_config, add_noise=False, noise=0.0):
+def PAT_forward(images, PAT_config, add_noise=False, noise=0.0, remove_transducers=False, removed_transducers=None):
     A, _, _, _ = forwardMatrixFullRingCDMMI(*PAT_config)
     # the data acquisition matrix T is A^t
     T = torch.tensor(A.T, device=images.device).float()
+
+    if remove_transducers:
+        # define a reduced T matrix 
+        pixels_to_keep = list(range(0, T.shape[0]))
+        for td in removed_transducers:
+            N_sample = PAT_config[7]
+            for pixel in range(td * N_sample, (td + 1)* N_sample):
+                pixels_to_keep.remove(pixel)
+        pixels_to_keep = torch.tensor(pixels_to_keep, device=images.device)
+        T_red = torch.index_select(T, 0, pixels_to_keep)
+        T = T_red
+
     P, L = [torch.eye(T.shape[0], device=images.device)] * 2
 
     # apply y = P(L)Tx
@@ -74,6 +86,10 @@ def PAT_forward(images, PAT_config, add_noise=False, noise=0.0):
         PAT_images[i] = torch.matmul(A, images[i].reshape((-1, 1)))
         if add_noise:
           PAT_images[i] = PAT_images[i] + noise * torch.randn_like(PAT_images[i])
-    PAT_images = PAT_images.reshape(images.shape[0], 1, images.shape[-2], -1)
+    if remove_transducers:
+        N_transducer = PAT_config[0]
+        PAT_images = PAT_images.reshape(images.shape[0], 1, N_transducer - len(removed_transducers), N_sample)
+    else:
+        PAT_images = PAT_images.reshape(images.shape[0], 1, images.shape[-2], -1)
 
     return PAT_images, P, L, T
