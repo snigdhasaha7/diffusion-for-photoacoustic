@@ -119,6 +119,7 @@ def condition_on_pat_y(raw_images, x_t, t, marginal_prob_std, operator_P, subsam
     return x_t_prime
 
 def condition_on_pat_y_modified(raw_images, x_t, t, marginal_prob_std, operator_P, subsampling_L, transformation_T, lbda=0.5, lbda_param=1, lbda_schedule='constant', a=0.5):
+    # (A^T A + aI)^-1 A^T ((1-lamb)Ax + lamby)
     y_t = get_y_t(raw_images, t, marginal_prob_std)
     lbda = lbda_scheduler(t, lbda, schedule=lbda_schedule, param=lbda_param)
     P, L, T = operator_P, subsampling_L, transformation_T
@@ -181,11 +182,11 @@ def pc_denoiser(raw_images,
         for time_step in tqdm.notebook.tqdm(time_steps):      
             batch_time_step = torch.ones(num_images, device=device) * time_step
             # Corrector step (Langevin MCMC)
-            grad = score_model(x, batch_time_step)
-            grad_norm = torch.norm(grad.reshape(grad.shape[0], -1), dim=-1).mean()
-            noise_norm = np.sqrt(np.prod(x.shape[1:]))
-            langevin_step_size = 2 * (snr * noise_norm / grad_norm)**2
-            x = x + langevin_step_size * grad + torch.sqrt(2 * langevin_step_size) * torch.randn_like(x)
+            # grad = score_model(x, batch_time_step)
+            # grad_norm = torch.norm(grad.reshape(grad.shape[0], -1), dim=-1).mean()
+            # noise_norm = np.sqrt(np.prod(x.shape[1:]))
+            # langevin_step_size = 2 * (snr * noise_norm / grad_norm)**2
+            # x = x + langevin_step_size * grad + torch.sqrt(2 * langevin_step_size) * torch.randn_like(x)
 
             # Predictor step (Euler-Maruyama)
             g = diffusion_coeff(batch_time_step)
