@@ -46,13 +46,17 @@ def lbda_scheduler(t, lbda, schedule="constant", param=1):
         lbda = lbda * f_t
     elif schedule == "relu":
         slope, pivot = param
-        lbda = max(0, slope * (t - pivot) * lbda)
+        lbda = 1 - max(0, slope * (t - pivot) * lbda)
     elif schedule == "sigmoid":
         slope, pivot = param
         lbda = lbda / (1 + torch.exp(-slope  * (t - pivot)))
     elif schedule == "bell":
         mean, std = param
         lbda = norm(mean, std).pdf(t) * lbda
+    elif schedule == "debug":
+      lbda, pivot = param
+      if t > pivot:
+        lbda = 0
     
     return lbda
 
@@ -118,8 +122,7 @@ def condition_on_pat_y(raw_images, x_t, t, marginal_prob_std, operator_P, subsam
     x_t_prime = torch.reshape(x_t_prime, x_t.shape)
     return x_t_prime
 
-def condition_on_pat_y_modified(raw_images, x_t, t, marginal_prob_std, operator_P, subsampling_L, transformation_T, lbda=0.5, lbda_param=1, lbda_schedule='constant', a=0.5):
-    # (A^T A + aI)^-1 A^T ((1-lamb)Ax + lamby)
+def condition_on_pat_y_modified(raw_images, x_t, t, marginal_prob_std, operator_P, subsampling_L, transformation_T, lbda=0.5, lbda_param=1, lbda_schedule='constant', a=1e-7):
     y_t = get_y_t(raw_images, t, marginal_prob_std)
     lbda = lbda_scheduler(t, lbda, schedule=lbda_schedule, param=lbda_param)
     P, L, T = operator_P, subsampling_L, transformation_T
@@ -129,14 +132,36 @@ def condition_on_pat_y_modified(raw_images, x_t, t, marginal_prob_std, operator_
     flat_y_t = torch.unsqueeze(torch.flatten(y_t, start_dim=1), dim=2)
     flat_x_t = torch.unsqueeze(torch.flatten(x_t, start_dim=1), dim=2)
 
+    # original tikhonov
     # x_prime is a weighted function of x and y
-    term1 = torch.inverse(torch.matmul(A.T, A) + a * torch.eye(A.shape[1], device=A.device))
-    term2 = torch.matmul(A.T, (1 - lbda) * torch.matmul(A, flat_x_t))
-    term3 = torch.matmul(A.T, lbda * flat_y_t)
-    x_t_prime = torch.matmul(term1, term2 + term3)
+    # term1 = torch.inverse(torch.matmul(A.T, A) + a * torch.eye(A.shape[1], device=A.device))
+    # term2 = torch.matmul(A.T, (1 - lbda) * torch.matmul(A, flat_x_t))
+    # term3 = torch.matmul(A.T, lbda * flat_y_t)
+    # x_t_prime = torch.matmul(term1, term2 + term3)
+
+
+    # berthy's thing
+    A_pinv = torch.linalg.pinv(A)
+    term1B = (1 - lbda) * flat_x_t
+    term2B = lbda * torch.matmul(A_pinv, flat_y_t)
+    B = term1B + term2B
+    term1A = (1 - lbda) * torch.eye(A.T.size(0), device=A.device) 
+    term2A = lbda * torch.matmul(A_pinv, A)
+    A = term1A + term2A
+
+    x_t_prime = torch.linalg.solve(A, B)
+
+
+    # term1 = lbda * (torch.matmul(A.T, A) + a * torch.eye(A.shape[1], device=A.device))
+    # term1 = lbda * torch.matmul(A.T, A)
+    # term2 = (1 - lbda) * torch.eye(A.T.size(0), device = A.device)
+    # term3 = (1 - lbda) * flat_x_t
+    # term4 = lbda * torch.matmul(A.T, flat_y_t)
+    # x_t_prime = torch.matmul(torch.inverse(term1 + term2), term3 + term4)
+
 
     x_t_prime = torch.reshape(x_t_prime, x_t.shape)
-    return x_t_prime
+    return x_t_prime, lbda
 
 def psnr(clean, noisy):
     # our range of values is [0.,1.]
@@ -163,7 +188,7 @@ def pc_denoiser(raw_images,
                transformation_T=None,
                num_steps=500,
                report_PSNR=False,
-               ipython=False,
+               ipython=True,
                clean_images=None,
                snr=0.16,                
                device='cuda',
@@ -181,6 +206,35 @@ def pc_denoiser(raw_images,
     with torch.no_grad():
         for time_step in tqdm.notebook.tqdm(time_steps):      
             batch_time_step = torch.ones(num_images, device=device) * time_step
+
+            # Condition on y_t.
+            x_with_y, lbda_t = condition_on_pat_y_modified(raw_images, x, time_step, marginal_prob_std, operator_P, subsampling_L, transformation_T, lbda, lbda_param, lbda_schedule, a)
+
+
+            if ipython == True:
+                # if plot_time_track % plot_step == 0 or plot_time_track >= (num_steps - 10):
+                ipd.clear_output(wait=True)
+                fig = plt.figure(figsize=(10,3))
+                fig.suptitle(f"Step: {time_step:.3f}, lbda={lbda_t:.2e}")
+                plt.subplot(121)
+                plt.imshow(x.cpu()[0].squeeze())
+                plt.axis("off")
+                plt.title("Before Condition")
+                plt.colorbar()
+                plt.subplot(122)
+                plt.imshow(x_with_y.cpu()[0].squeeze())
+                plt.axis("off")
+                plt.title("After Condition")
+                plt.colorbar()
+                plt.show()
+                plot_time_track += 1
+
+            # Predictor step.
+            g = diffusion_coeff(batch_time_step)
+            f = drift_coeff(x_with_y, batch_time_step)
+            x_mean = x_with_y + (-1 * f + ((g**2)[:, None, None, None] * score_model(x_with_y, batch_time_step))) * step_size
+            x = x_mean + torch.sqrt((g**2)[:, None, None, None] * step_size) * torch.randn_like(x)
+
             # Corrector step (Langevin MCMC)
             # grad = score_model(x, batch_time_step)
             # grad_norm = torch.norm(grad.reshape(grad.shape[0], -1), dim=-1).mean()
@@ -189,40 +243,44 @@ def pc_denoiser(raw_images,
             # x = x + langevin_step_size * grad + torch.sqrt(2 * langevin_step_size) * torch.randn_like(x)
 
             # Predictor step (Euler-Maruyama)
-            g = diffusion_coeff(batch_time_step)
-            if drift_coeff == None:
-                x_mean = x + (g**2)[:, None, None, None] * score_model(x, batch_time_step) * step_size
-            else:
-                f = drift_coeff(x, batch_time_step)
-                x_mean = x + ( -1 * f + ((g**2)[:, None, None, None] * score_model(x, batch_time_step)) ) * step_size
+            # g = diffusion_coeff(batch_time_step)
+            # if drift_coeff == None:
+            #     x_mean = x + (g**2)[:, None, None, None] * score_model(x, batch_time_step) * step_size
+            # else:
+            #     f = drift_coeff(x, batch_time_step)
+            #     x_mean = x + ( -1 * f + ((g**2)[:, None, None, None] * score_model(x, batch_time_step)) ) * step_size
 
-            # Condition on y_t
-            if task == 'denoise':
-                x_mean = condition_on_y(raw_images, x_mean, time_step, marginal_prob_std, lbda, lbda_param, lbda_schedule)
-            elif task == 'depaint':
-                x_mean = condition_on_inpainted_y(raw_images, x_mean, time_step, marginal_prob_std, subsampling_L, lbda, lbda_param, lbda_schedule)
-            elif task == 'degaussub':
-                x_mean = condition_on_gauss_sub_y(raw_images, x_mean, time_step, marginal_prob_std, operator_P, subsampling_L, transformation_T, lbda, lbda_param, lbda_schedule)
-            elif task == 'depat':
-                x_mean = condition_on_pat_y(raw_images, x_mean, time_step, marginal_prob_std, operator_P, subsampling_L, transformation_T, lbda, lbda_param, lbda_schedule)
-            elif task == 'depat_modified':
-                x_mean = condition_on_pat_y_modified(raw_images, x_mean, time_step, marginal_prob_std, operator_P, subsampling_L, transformation_T, lbda, lbda_param, lbda_schedule, a)
+            # # Condition on y_t
+            # if task == 'denoise':
+            #     x_mean_prime = condition_on_y(raw_images, x_mean, time_step, marginal_prob_std, lbda, lbda_param, lbda_schedule)
+            # elif task == 'depaint':
+            #     x_mean_prime = condition_on_inpainted_y(raw_images, x_mean, time_step, marginal_prob_std, subsampling_L, lbda, lbda_param, lbda_schedule)
+            # elif task == 'degaussub':
+            #     x_mean_prime = condition_on_gauss_sub_y(raw_images, x_mean, time_step, marginal_prob_std, operator_P, subsampling_L, transformation_T, lbda, lbda_param, lbda_schedule)
+            # elif task == 'depat':
+            #     x_mean_prime = condition_on_pat_y(raw_images, x_mean, time_step, marginal_prob_std, operator_P, subsampling_L, transformation_T, lbda, lbda_param, lbda_schedule)
+            # elif task == 'depat_modified':
+            #     x_mean_prime = condition_on_pat_y_modified(raw_images, x_mean, time_step, marginal_prob_std, operator_P, subsampling_L, transformation_T, lbda, lbda_param, lbda_schedule, a)
 
-            # Compute metrics
-            if report_PSNR == True:
+            # # Compute metrics
+            # if report_PSNR == True:
                 
-                metrics.append([psnr(torch.squeeze(clean), torch.squeeze(noisy)).item() for (clean, noisy) in zip(clean_images,x_mean)])
+            #     metrics.append([psnr(torch.squeeze(clean), torch.squeeze(noisy)).item() for (clean, noisy) in zip(clean_images,x_mean)])
             
-            if ipython == True:
-                if plot_time_track % plot_step == 0 or plot_time_track >= (num_steps - 10):
-                    ipd.clear_output(wait=True)
-                    fig = plt.imshow(x_mean.cpu()[0].squeeze())
-                    plt.title(f'Step: {time_step}')
-                    plt.colorbar()
-                    plt.show()
-                plot_time_track += 1
+            # if ipython == True:
+            #     # if plot_time_track % plot_step == 0 or plot_time_track >= (num_steps - 10):
+            #     ipd.clear_output(wait=True)
+            #     plt.subplot(121)
+            #     plt.imshow(x_with_y.cpu()[0].squeeze())
+            #     plt.colorbar()
+            #     plt.subplot(122)
+            #     plt.imshow(x.cpu()[0].squeeze())
+            #     plt.colorbar()
+            #     plt.title(f'Step: {time_step}')
+            #     plt.show()
+            #     plot_time_track += 1
 
-            x = x_mean + torch.sqrt(g**2 * step_size)[:, None, None, None] * torch.randn_like(x)
+            # x = x_mean + torch.sqrt(g**2 * step_size)[:, None, None, None] * torch.randn_like(x)
 
     # The last step does not include any noise
     if report_PSNR == True:
