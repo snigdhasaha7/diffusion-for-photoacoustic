@@ -19,20 +19,27 @@ def plot_images(images):
     plt.imshow(sample_grid.cpu().permute(1, 2, 0).squeeze())
     plt.show()
 
-def get_y_t(images, t, marginal_prob_std):
+def get_y_t(y, t, marginal_prob_std, A):
     # vector of t
-    ts = t * torch.ones(images.shape[0], device=images.device)
+    ts = t * torch.ones(y.shape[0], device=y.device)
     ts = ts[:, None, None, None]
+
+    # get flattened y
+    flat_y = torch.unsqueeze(torch.flatten(y, start_dim=1), dim=2).squeeze()
     
     # sample some noise
-    z = torch.randn_like(images)
+    z = torch.randn_like(flat_y)
 
     # perturb at level t
     std = marginal_prob_std(t=ts)
     # std = marginal_prob_std(t=torch.tensor(t))
-    perturbed_images = images + z * std
+    # perturbed_images = y + z * std
 
-    return perturbed_images
+    # TODO FIX THIS TO ACCT FOR MEAN AND DO THE SAME FOR LOSS
+    std = marginal_prob_std(flat_y, t=ts)
+    y_t = y_mean + x_std * torch.einsum("ij,bj->bi", A, z)
+
+    return y_t
 
 def lbda_scheduler(t, lbda, schedule="constant", param=1):
     if schedule == "constant":
@@ -58,6 +65,12 @@ def lbda_scheduler(t, lbda, schedule="constant", param=1):
       lbda, pivot = param
       if t > pivot:
         lbda = 0
+    elif schedule == "stddev":
+      marginal_prob_std = param
+      stddev = marginal_prob_std(torch.tensor(t))
+      # lbda = stddev**2 / (stddev**2 + 1)
+      # lbda = 2 * lbda
+      lbda = stddev
     
     return lbda
 
@@ -130,8 +143,9 @@ def condition_on_pat_y_modified(raw_images, x_t, t, marginal_prob_std, operator_
     A = torch.matmul(P, torch.matmul(L, T))
 
     # turn images into column vectors
-    flat_y_t = torch.unsqueeze(torch.flatten(y_t, start_dim=1), dim=2)
-    flat_x_t = torch.unsqueeze(torch.flatten(x_t, start_dim=1), dim=2)
+    flat_y_t = torch.unsqueeze(torch.flatten(y_t, start_dim=1), dim=2).squeeze()
+    flat_x_t = torch.unsqueeze(torch.flatten(x_t, start_dim=1), dim=2).squeeze()
+    flat_raw_images = torch.unsqueeze(torch.flatten(raw_images, start_dim=1), dim=2).squeeze()
 
     # original tikhonov, conditioning method 1
     # x_prime is a weighted function of x and y
@@ -142,12 +156,19 @@ def condition_on_pat_y_modified(raw_images, x_t, t, marginal_prob_std, operator_
 
 
     # modified tikhonov, conditioning method 2
-    term1 = lbda * (torch.matmul(A.T, A) + a * torch.eye(A.shape[1], device=A.device))
+    # term1 = lbda * (torch.matmul(A.T, A) + a * torch.eye(A.shape[1], device=A.device))
     term1 = lbda * torch.matmul(A.T, A)
     term2 = (1 - lbda) * torch.eye(A.T.size(0), device = A.device)
     term3 = (1 - lbda) * flat_x_t
-    term4 = lbda * torch.matmul(A.T, flat_y_t)
-    x_t_prime = torch.matmul(torch.inverse(term1 + term2), term3 + term4)
+    # term4 = lbda * torch.matmul(A.T, flat_y_t)
+    # term4 = lbda * torch.einsum("ij,bj->bi", A.T, flat_y_t)
+    term4 = lbda * torch.einsum("ij,bj->bi", A.T, flat_raw_images)
+    x_t_prime = torch.einsum("ij,bj->bi", torch.inverse(term1 + term2), term3 + term4)
+
+
+    l2_err = torch.nn.MSELoss()
+    x_err = l2_err(torch.einsum("ij,bj->bi", A, flat_x_t), flat_raw_images).item()
+    xy_err = l2_err(torch.einsum("ij,bj->bi", A, x_t_prime), flat_raw_images).item()
 
 
     # berthy's thing, conditioning method 3
@@ -162,7 +183,7 @@ def condition_on_pat_y_modified(raw_images, x_t, t, marginal_prob_std, operator_
 
 
     x_t_prime = torch.reshape(x_t_prime, x_t.shape)
-    return x_t_prime, lbda
+    return x_t_prime, lbda, x_err, xy_err
 
 def psnr(clean, noisy):
     # our range of values is [0.,1.]
@@ -202,10 +223,9 @@ def pc_denoiser(raw_images,
     step_size = time_steps[0] - time_steps[1]
     x = init_x
     if report_PSNR == True: metrics=[]
-    if error_plot == True:
-      l2_err = torch.nn.MSELoss()
-      x_errors = []
-      x_with_y_errors = []
+    x_errors = []
+    x_with_y_errors = []
+    stdev = []
     if ipython == True: 
         plot_time_track = 0
         plot_step = num_steps / 10 
@@ -214,13 +234,11 @@ def pc_denoiser(raw_images,
             batch_time_step = torch.ones(num_images, device=device) * time_step
 
             # Condition on y_t.
-            x_with_y, lbda_t = condition_on_pat_y_modified(raw_images, x, time_step, marginal_prob_std, operator_P, subsampling_L, transformation_T, lbda, lbda_param, lbda_schedule, a)
-
-            if error_plot == True:
-                x_err = l2_err(x, clean_images).item()
-                xy_err = l2_err(x_with_y, clean_images).item()
-                x_errors.append(x_err)
-                x_with_y_errors.append(xy_err)
+            x_with_y, lbda_t, x_err, xy_err = condition_on_pat_y_modified(raw_images, x, time_step, marginal_prob_std, operator_P, subsampling_L, transformation_T, lbda, lbda_param, lbda_schedule, a)
+            x_errors.append(x_err)
+            x_with_y_errors.append(xy_err)
+            
+            stdev.append(marginal_prob_std(torch.tensor(time_step)))
 
             if ipython == True:
                 # if plot_time_track % plot_step == 0 or plot_time_track >= (num_steps - 10):
@@ -294,11 +312,9 @@ def pc_denoiser(raw_images,
             # x = x_mean + torch.sqrt(g**2 * step_size)[:, None, None, None] * torch.randn_like(x)
 
     # The last step does not include any noise
-    if report_PSNR == True and error_plot == True:
-      return (x_mean, metrics, x_errors, x_with_y_errors)
-    elif report_PSNR == True:
-        return (x_mean, metrics)
-    return x_mean
+    if report_PSNR == True:
+      return (x_mean, metrics, x_errors, x_with_y_errors, stdev)
+    return (x_mean, x_errors, x_with_y_errors)
 
 def Euler_Maruyama_denoiser(raw_images,
                            score_model,
