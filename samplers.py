@@ -29,6 +29,7 @@ def get_y_t(images, t, marginal_prob_std):
 
     # perturb at level t
     std = marginal_prob_std(t=ts)
+    # std = marginal_prob_std(t=torch.tensor(t))
     perturbed_images = images + z * std
 
     return perturbed_images
@@ -132,7 +133,7 @@ def condition_on_pat_y_modified(raw_images, x_t, t, marginal_prob_std, operator_
     flat_y_t = torch.unsqueeze(torch.flatten(y_t, start_dim=1), dim=2)
     flat_x_t = torch.unsqueeze(torch.flatten(x_t, start_dim=1), dim=2)
 
-    # original tikhonov
+    # original tikhonov, conditioning method 1
     # x_prime is a weighted function of x and y
     # term1 = torch.inverse(torch.matmul(A.T, A) + a * torch.eye(A.shape[1], device=A.device))
     # term2 = torch.matmul(A.T, (1 - lbda) * torch.matmul(A, flat_x_t))
@@ -140,24 +141,24 @@ def condition_on_pat_y_modified(raw_images, x_t, t, marginal_prob_std, operator_
     # x_t_prime = torch.matmul(term1, term2 + term3)
 
 
-    # berthy's thing
-    A_pinv = torch.linalg.pinv(A)
-    term1B = (1 - lbda) * flat_x_t
-    term2B = lbda * torch.matmul(A_pinv, flat_y_t)
-    B = term1B + term2B
-    term1A = (1 - lbda) * torch.eye(A.T.size(0), device=A.device) 
-    term2A = lbda * torch.matmul(A_pinv, A)
-    A = term1A + term2A
-
-    x_t_prime = torch.linalg.solve(A, B)
+    # modified tikhonov, conditioning method 2
+    term1 = lbda * (torch.matmul(A.T, A) + a * torch.eye(A.shape[1], device=A.device))
+    term1 = lbda * torch.matmul(A.T, A)
+    term2 = (1 - lbda) * torch.eye(A.T.size(0), device = A.device)
+    term3 = (1 - lbda) * flat_x_t
+    term4 = lbda * torch.matmul(A.T, flat_y_t)
+    x_t_prime = torch.matmul(torch.inverse(term1 + term2), term3 + term4)
 
 
-    # term1 = lbda * (torch.matmul(A.T, A) + a * torch.eye(A.shape[1], device=A.device))
-    # term1 = lbda * torch.matmul(A.T, A)
-    # term2 = (1 - lbda) * torch.eye(A.T.size(0), device = A.device)
-    # term3 = (1 - lbda) * flat_x_t
-    # term4 = lbda * torch.matmul(A.T, flat_y_t)
-    # x_t_prime = torch.matmul(torch.inverse(term1 + term2), term3 + term4)
+    # berthy's thing, conditioning method 3
+    # A_pinv = torch.linalg.pinv(A)
+    # term1B = (1 - lbda) * flat_x_t
+    # term2B = lbda * torch.matmul(A_pinv, flat_y_t)
+    # B = term1B + term2B
+    # term1A = (1 - lbda) * torch.eye(A.T.size(0), device=A.device) 
+    # term2A = lbda * torch.matmul(A_pinv, A)
+    # A = term1A + term2A
+    # x_t_prime = torch.linalg.solve(A, B)
 
 
     x_t_prime = torch.reshape(x_t_prime, x_t.shape)
@@ -188,7 +189,8 @@ def pc_denoiser(raw_images,
                transformation_T=None,
                num_steps=500,
                report_PSNR=False,
-               ipython=True,
+               ipython=False,
+               error_plot=True,
                clean_images=None,
                snr=0.16,                
                device='cuda',
@@ -200,6 +202,10 @@ def pc_denoiser(raw_images,
     step_size = time_steps[0] - time_steps[1]
     x = init_x
     if report_PSNR == True: metrics=[]
+    if error_plot == True:
+      l2_err = torch.nn.MSELoss()
+      x_errors = []
+      x_with_y_errors = []
     if ipython == True: 
         plot_time_track = 0
         plot_step = num_steps / 10 
@@ -210,6 +216,11 @@ def pc_denoiser(raw_images,
             # Condition on y_t.
             x_with_y, lbda_t = condition_on_pat_y_modified(raw_images, x, time_step, marginal_prob_std, operator_P, subsampling_L, transformation_T, lbda, lbda_param, lbda_schedule, a)
 
+            if error_plot == True:
+                x_err = l2_err(x, clean_images).item()
+                xy_err = l2_err(x_with_y, clean_images).item()
+                x_errors.append(x_err)
+                x_with_y_errors.append(xy_err)
 
             if ipython == True:
                 # if plot_time_track % plot_step == 0 or plot_time_track >= (num_steps - 10):
@@ -283,7 +294,9 @@ def pc_denoiser(raw_images,
             # x = x_mean + torch.sqrt(g**2 * step_size)[:, None, None, None] * torch.randn_like(x)
 
     # The last step does not include any noise
-    if report_PSNR == True:
+    if report_PSNR == True and error_plot == True:
+      return (x_mean, metrics, x_errors, x_with_y_errors)
+    elif report_PSNR == True:
         return (x_mean, metrics)
     return x_mean
 
