@@ -19,7 +19,7 @@ def plot_images(images):
     plt.imshow(sample_grid.cpu().permute(1, 2, 0).squeeze())
     plt.show()
 
-def get_y_t(y, t, marginal_prob_std, A):
+def get_y_t(y, t, marginal_prob_std, A, x):
     # vector of t
     ts = t * torch.ones(y.shape[0], device=y.device)
     # ts = ts[:, None, None, None]
@@ -28,7 +28,7 @@ def get_y_t(y, t, marginal_prob_std, A):
     flat_y = torch.unsqueeze(torch.flatten(y, start_dim=1), dim=2).squeeze()
     
     # sample some noise
-    z = torch.randn_like(flat_y)
+    z = torch.randn_like(x)
 
     # perturb at level t
     mean_y, std = marginal_prob_std(flat_y, ts)
@@ -37,7 +37,8 @@ def get_y_t(y, t, marginal_prob_std, A):
     # perturbed_images = y + z * std
 
     # y_t = mean_y + std * torch.einsum("ij,bj->bi", A, z)
-    y_t = mean_y + torch.bmm(std[:, None, None], z[:, None]).squeeze()
+    # y_t = mean_y + torch.bmm(std[:, None, None], z[:, None]).squeeze()
+    y_t = mean_y + torch.bmm(std[:, None, None], torch.einsum("ij,bj->bi", A, z)[:, None]).squeeze()
 
     return y_t
 
@@ -125,6 +126,7 @@ def condition_on_pat_y(raw_images, x_t, t, marginal_prob_std, operator_P, subsam
     lbda = lbda_scheduler(t, lbda, schedule=lbda_schedule, param=lbda_param)
     P, L, T = operator_P, subsampling_L, transformation_T
     # turn images into column vectors
+    
     flat_y_t = torch.unsqueeze(torch.flatten(y_t, start_dim=1), dim=2)
     flat_x_t = torch.unsqueeze(torch.flatten(x_t, start_dim=1), dim=2)
     # x_prime is a weighted function of x and y
@@ -138,12 +140,12 @@ def condition_on_pat_y(raw_images, x_t, t, marginal_prob_std, operator_P, subsam
 
 def condition_on_pat_y_modified(raw_images, x_t, t, marginal_prob_std, A, lbda=0.5, lbda_param=1, lbda_schedule='constant', a=1e-7):
     # y_t = get_y_t(raw_images, t, marginal_prob_std)
-    flat_y_t = get_y_t(raw_images, t, marginal_prob_std, A)
     lbda = lbda_scheduler(t, lbda, schedule=lbda_schedule, param=lbda_param)
 
     # turn images into column vectors
     # flat_y_t = torch.unsqueeze(torch.flatten(y_t, start_dim=1), dim=2).squeeze()
     flat_x_t = torch.unsqueeze(torch.flatten(x_t, start_dim=1), dim=2).squeeze()
+    flat_y_t = get_y_t(raw_images, t, marginal_prob_std, A, flat_x_t)
     flat_raw_images = torch.unsqueeze(torch.flatten(raw_images, start_dim=1), dim=2).squeeze()
 
     # original tikhonov, conditioning method 1
@@ -162,7 +164,7 @@ def condition_on_pat_y_modified(raw_images, x_t, t, marginal_prob_std, A, lbda=0
     # term4 = lbda * torch.matmul(A.T, flat_y_t)
     # term4 = lbda * torch.einsum("ij,bj->bi", A.T, flat_y_t)
 
-    # term4 = lbda * torch.einsum("ij,bj->bi", A.T, flat_raw_images)
+   #  term4 = lbda * torch.einsum("ij,bj->bi", A.T, flat_raw_images)
     term4 = lbda * torch.einsum("ij,bj->bi", A.T, flat_y_t)
 
     x_t_prime = torch.einsum("ij,bj->bi", torch.inverse(term1 + term2), term3 + term4)
