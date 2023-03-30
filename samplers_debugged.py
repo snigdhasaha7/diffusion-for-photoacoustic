@@ -168,8 +168,8 @@ def condition_on_pat_y_modified(raw_images, x_t, t, marginal_prob_std, A, lbda=0
     # term4 = lbda * torch.matmul(A.T, flat_y_t)
     # term4 = lbda * torch.einsum("ij,bj->bi", A.T, flat_y_t)
 
-    term4 = lbda * torch.einsum("ij,bj->bi", A.T, flat_raw_images)
-    # term4 = lbda * torch.einsum("ij,bj->bi", A.T, flat_y_t)
+    # term4 = lbda * torch.einsum("ij,bj->bi", A.T, flat_raw_images)
+    term4 = lbda * torch.einsum("ij,bj->bi", A.T, flat_y_t)
 
     x_t_prime = torch.einsum("ij,bj->bi", torch.inverse(term1 + term2), term3 + term4)
 
@@ -243,91 +243,190 @@ def pc_denoiser(raw_images,
         plot_step = num_steps / 10 
     with torch.no_grad():
         for time_step in tqdm.notebook.tqdm(time_steps):      
-            batch_time_step = t
-            torch.ones(num_images, device=device) * time_step
+          batch_time_step = torch.ones(num_images, device=device) * time_step
 
-            # Condition on y_t.
-            x_with_y, lbda_t, x_err, xy_err = condition_on_pat_y_modified(raw_images, x, time_step, marginal_prob_std, A, lbda, lbda_param, lbda_schedule, a)
-            x_errors.append(x_err)
-            x_with_y_errors.append(xy_err)
-            
-            stdev.append(marginal_prob_std(flat_clean_images[:1], torch.Tensor([time_step]).to(A.device)))
+          x, lbda_t, x_err, xy_err = condition_on_pat_y_modified(raw_images, x, time_step, marginal_prob_std, A, lbda, lbda_param, lbda_schedule, a)
+          x_errors.append(x_err)
+          x_with_y_errors.append(xy_err)      
 
-            if ipython == True:
-                # if plot_time_track % plot_step == 0 or plot_time_track >= (num_steps - 10):
-                ipd.clear_output(wait=True)
-                fig = plt.figure(figsize=(10,3))
-                fig.suptitle(f"Step: {time_step:.3f}, lbda={lbda_t:.2e}")
-                plt.subplot(121)
-                plt.imshow(x.cpu()[0].squeeze())
-                plt.axis("off")
-                plt.title("Before Condition")
-                plt.colorbar()
-                plt.subplot(122)
-                plt.imshow(x_with_y.cpu()[0].squeeze())
-                plt.axis("off")
-                plt.title("After Condition")
-                plt.colorbar()
-                plt.show()
-                plot_time_track += 1
+          # Predictor step (Euler-Maruyama)
+          # TODO revisit this for VP
+          g = diffusion_coeff(batch_time_step)
+          if drift_coeff == None:
+              x_mean = x + (g**2)[:, None, None, None] * score_model(x, batch_time_step) * step_size
+          else:
+              f = drift_coeff(x, batch_time_step)
+              x_mean = x + ( -1 * f + ((g**2)[:, None, None, None] * score_model(x, batch_time_step)) ) * step_size
+          x = x_mean + torch.sqrt(g**2 * step_size)[:, None, None, None] * torch.randn_like(x)
 
-            # Predictor step.
-            g = diffusion_coeff(batch_time_step)
-            f = drift_coeff(x_with_y, batch_time_step)
-            x_mean = x_with_y + (-1 * f + ((g**2)[:, None, None, None] * score_model(x_with_y, batch_time_step))) * step_size
-            x = x_mean + torch.sqrt((g**2)[:, None, None, None] * step_size) * torch.randn_like(x)
-
-            # Corrector step (Langevin MCMC)
-            # grad = score_model(x, batch_time_step)
-            # grad_norm = torch.norm(grad.reshape(grad.shape[0], -1), dim=-1).mean()
-            # noise_norm = np.sqrt(np.prod(x.shape[1:]))
-            # langevin_step_size = 2 * (snr * noise_norm / grad_norm)**2
-            # x = x + langevin_step_size * grad + torch.sqrt(2 * langevin_step_size) * torch.randn_like(x)
-
-            # Predictor step (Euler-Maruyama)
-            # g = diffusion_coeff(batch_time_step)
-            # if drift_coeff == None:
-            #     x_mean = x + (g**2)[:, None, None, None] * score_model(x, batch_time_step) * step_size
-            # else:
-            #     f = drift_coeff(x, batch_time_step)
-            #     x_mean = x + ( -1 * f + ((g**2)[:, None, None, None] * score_model(x, batch_time_step)) ) * step_size
-
-            # # Condition on y_t
-            # if task == 'denoise':
-            #     x_mean_prime = condition_on_y(raw_images, x_mean, time_step, marginal_prob_std, lbda, lbda_param, lbda_schedule)
-            # elif task == 'depaint':
-            #     x_mean_prime = condition_on_inpainted_y(raw_images, x_mean, time_step, marginal_prob_std, subsampling_L, lbda, lbda_param, lbda_schedule)
-            # elif task == 'degaussub':
-            #     x_mean_prime = condition_on_gauss_sub_y(raw_images, x_mean, time_step, marginal_prob_std, operator_P, subsampling_L, transformation_T, lbda, lbda_param, lbda_schedule)
-            # elif task == 'depat':
-            #     x_mean_prime = condition_on_pat_y(raw_images, x_mean, time_step, marginal_prob_std, operator_P, subsampling_L, transformation_T, lbda, lbda_param, lbda_schedule)
-            # elif task == 'depat_modified':
-            #     x_mean_prime = condition_on_pat_y_modified(raw_images, x_mean, time_step, marginal_prob_std, operator_P, subsampling_L, transformation_T, lbda, lbda_param, lbda_schedule, a)
-
-            # # Compute metrics
-            # if report_PSNR == True:
-                
-            #     metrics.append([psnr(torch.squeeze(clean), torch.squeeze(noisy)).item() for (clean, noisy) in zip(clean_images,x_mean)])
-            
-            # if ipython == True:
-            #     # if plot_time_track % plot_step == 0 or plot_time_track >= (num_steps - 10):
-            #     ipd.clear_output(wait=True)
-            #     plt.subplot(121)
-            #     plt.imshow(x_with_y.cpu()[0].squeeze())
-            #     plt.colorbar()
-            #     plt.subplot(122)
-            #     plt.imshow(x.cpu()[0].squeeze())
-            #     plt.colorbar()
-            #     plt.title(f'Step: {time_step}')
-            #     plt.show()
-            #     plot_time_track += 1
-
-            # x = x_mean + torch.sqrt(g**2 * step_size)[:, None, None, None] * torch.randn_like(x)
-
+          # Corrector step (Langevin MCMC)
+          grad = score_model(x, batch_time_step)
+          grad_norm = torch.norm(grad.reshape(grad.shape[0], -1), dim=-1).mean()
+          noise_norm = np.sqrt(np.prod(x.shape[1:]))
+          langevin_step_size = 2 * (snr * noise_norm / grad_norm)**2
+          x = x + langevin_step_size * grad + torch.sqrt(2 * langevin_step_size) * torch.randn_like(x)            
+          
     # The last step does not include any noise
     if report_PSNR == True:
       return (x_mean, metrics, x_errors, x_with_y_errors, stdev)
     return (x_mean, x_errors, x_with_y_errors)
+
+
+
+
+
+
+
+# def pc_denoiser(raw_images,
+#                score_model,
+#                lbda, 
+#                marginal_prob_std,
+#                diffusion_coeff,
+#                drift_coeff=None,
+#                task='denoise',
+#                lbda_schedule='constant',
+#                lbda_param=1,
+#                a=0.5,
+#                operator_P=None,
+#                subsampling_L=None,
+#                transformation_T=None,
+#                num_steps=500,
+#                report_PSNR=False,
+#                ipython=False,
+#                error_plot=True,
+#                clean_images=None,
+#                snr=0.16,                
+#                device='cuda',
+#                eps=1e-3):
+#     num_images = len(raw_images)
+#     A = torch.matmul(operator_P, torch.matmul(subsampling_L, transformation_T))
+#     t = torch.ones(num_images, device=device)
+
+#     # first arg of marg prob does not matter if we only need std
+#     flat_clean_images = torch.unsqueeze(torch.flatten(clean_images, start_dim=1), dim=2).squeeze()
+#     init_x = torch.randn(num_images, 1, 28, 28, device=device) * marginal_prob_std(flat_clean_images, t)[1][:, None, None, None]
+#     time_steps = np.linspace(1., eps, num_steps)
+#     step_size = time_steps[0] - time_steps[1]
+#     x = init_x
+#     if report_PSNR == True: metrics=[]
+#     x_errors = []
+#     x_with_y_errors = []
+#     stdev = []
+#     if ipython == True: 
+#         plot_time_track = 0
+#         plot_step = num_steps / 10 
+#     with torch.no_grad():
+#         for time_step in tqdm.notebook.tqdm(time_steps):      
+#             batch_time_step = t
+#             torch.ones(num_images, device=device) * time_step
+
+#             # Condition on y_t.
+#             x_with_y, lbda_t, x_err, xy_err = condition_on_pat_y_modified(raw_images, x, time_step, marginal_prob_std, A, lbda, lbda_param, lbda_schedule, a)
+#             x_errors.append(x_err)
+#             x_with_y_errors.append(xy_err)
+            
+#             stdev.append(marginal_prob_std(flat_clean_images[:1], torch.Tensor([time_step]).to(A.device)))
+
+#             if ipython == True:
+#                 # if plot_time_track % plot_step == 0 or plot_time_track >= (num_steps - 10):
+#                 ipd.clear_output(wait=True)
+#                 fig = plt.figure(figsize=(10,3))
+#                 fig.suptitle(f"Step: {time_step:.3f}, lbda={lbda_t:.2e}")
+#                 plt.subplot(121)
+#                 plt.imshow(x.cpu()[0].squeeze())
+#                 plt.axis("off")
+#                 plt.title("Before Condition")
+#                 plt.colorbar()
+#                 plt.subplot(122)
+#                 plt.imshow(x_with_y.cpu()[0].squeeze())
+#                 plt.axis("off")
+#                 plt.title("After Condition")
+#                 plt.colorbar()
+#                 plt.show()
+#                 plot_time_track += 1
+
+#             # Predictor step.
+#             # g = diffusion_coeff(batch_time_step)
+#             # f = drift_coeff(x_with_y, batch_time_step)
+#             # x_mean = x_with_y + (-1 * f + ((g**2)[:, None, None, None] * score_model(x_with_y, batch_time_step))) * step_size
+#             # x = x_mean + torch.sqrt((g**2)[:, None, None, None] * step_size) * torch.randn_like(x)
+
+
+
+
+#             # Corrector step (Langevin MCMC)
+#             grad = score_model(x_with_y, batch_time_step)
+#             grad_norm = torch.norm(grad.reshape(grad.shape[0], -1), dim=-1).mean()
+#             noise_norm = np.sqrt(np.prod(x_with_y.shape[1:]))
+#             langevin_step_size = 2 * (snr * noise_norm / grad_norm)**2
+#             x_with_y = x_with_y + langevin_step_size * grad + torch.sqrt(2 * langevin_step_size) * torch.randn_like(x_with_y, device=A.device)      
+
+#             # Predictor step (Euler-Maruyama)
+#             # TODO revisit this for VP
+#             g = diffusion_coeff(batch_time_step)
+#             if drift_coeff == None:
+#                 x_mean = x_with_y + (g**2)[:, None, None, None] * score_model(x_with_y, batch_time_step) * step_size
+#             else:
+#                 f = drift_coeff(x, batch_time_step)
+#                 x_mean = x_with_y + ( -1 * f + ((g**2)[:, None, None, None] * score_model(x_with_y, batch_time_step)) ) * step_size
+#             x = x_mean + torch.sqrt(g**2 * step_size)[:, None, None, None] * torch.randn_like(x_with_y, device=A.device)
+
+
+
+
+
+
+#             # Corrector step (Langevin MCMC)
+#             # grad = score_model(x, batch_time_step)
+#             # grad_norm = torch.norm(grad.reshape(grad.shape[0], -1), dim=-1).mean()
+#             # noise_norm = np.sqrt(np.prod(x.shape[1:]))
+#             # langevin_step_size = 2 * (snr * noise_norm / grad_norm)**2
+#             # x = x + langevin_step_size * grad + torch.sqrt(2 * langevin_step_size) * torch.randn_like(x)
+
+#             # Predictor step (Euler-Maruyama)
+#             # g = diffusion_coeff(batch_time_step)
+#             # if drift_coeff == None:
+#             #     x_mean = x + (g**2)[:, None, None, None] * score_model(x, batch_time_step) * step_size
+#             # else:
+#             #     f = drift_coeff(x, batch_time_step)
+#             #     x_mean = x + ( -1 * f + ((g**2)[:, None, None, None] * score_model(x, batch_time_step)) ) * step_size
+
+#             # # Condition on y_t
+#             # if task == 'denoise':
+#             #     x_mean_prime = condition_on_y(raw_images, x_mean, time_step, marginal_prob_std, lbda, lbda_param, lbda_schedule)
+#             # elif task == 'depaint':
+#             #     x_mean_prime = condition_on_inpainted_y(raw_images, x_mean, time_step, marginal_prob_std, subsampling_L, lbda, lbda_param, lbda_schedule)
+#             # elif task == 'degaussub':
+#             #     x_mean_prime = condition_on_gauss_sub_y(raw_images, x_mean, time_step, marginal_prob_std, operator_P, subsampling_L, transformation_T, lbda, lbda_param, lbda_schedule)
+#             # elif task == 'depat':
+#             #     x_mean_prime = condition_on_pat_y(raw_images, x_mean, time_step, marginal_prob_std, operator_P, subsampling_L, transformation_T, lbda, lbda_param, lbda_schedule)
+#             # elif task == 'depat_modified':
+#             #     x_mean_prime = condition_on_pat_y_modified(raw_images, x_mean, time_step, marginal_prob_std, operator_P, subsampling_L, transformation_T, lbda, lbda_param, lbda_schedule, a)
+
+#             # # Compute metrics
+#             # if report_PSNR == True:
+                
+#             #     metrics.append([psnr(torch.squeeze(clean), torch.squeeze(noisy)).item() for (clean, noisy) in zip(clean_images,x_mean)])
+            
+#             # if ipython == True:
+#             #     # if plot_time_track % plot_step == 0 or plot_time_track >= (num_steps - 10):
+#             #     ipd.clear_output(wait=True)
+#             #     plt.subplot(121)
+#             #     plt.imshow(x_with_y.cpu()[0].squeeze())
+#             #     plt.colorbar()
+#             #     plt.subplot(122)
+#             #     plt.imshow(x.cpu()[0].squeeze())
+#             #     plt.colorbar()
+#             #     plt.title(f'Step: {time_step}')
+#             #     plt.show()
+#             #     plot_time_track += 1
+
+#             # x = x_mean + torch.sqrt(g**2 * step_size)[:, None, None, None] * torch.randn_like(x)
+
+#     # The last step does not include any noise
+#     if report_PSNR == True:
+#       return (x_mean, metrics, x_errors, x_with_y_errors, stdev)
+#     return (x_mean, x_errors, x_with_y_errors)
 
 def Euler_Maruyama_denoiser(raw_images,
                            score_model,
