@@ -110,7 +110,7 @@ class ScoreNet(nn.Module):
         h = self.tconv1(torch.cat([h, h1], dim=1))
 
         # Normalize output
-        h = h / self.marginal_prob_std(torch.ones((t.shape[0],1), device=x.device), t)[1][:, None, None, None]
+        h = h / self.marginal_prob_std(x, t)[1][:, None, None, None]
         return h
 
 

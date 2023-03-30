@@ -90,10 +90,18 @@ class SubVariancePreserving():
     def marginal_prob_std(self, x, t, beta_min, beta_max):
         coeff = -0.25 * t ** 2 * (beta_max - beta_min) - 0.5 * t * beta_min
         # mean = torch.exp(coeff[:, None, None, None]) * x
+        std = 1 - torch.exp(2. * coeff)
+        if len(x.shape) == 4:
+            mean = torch.exp(coeff)[:, None, None, None] * x
+        else:
+            mean = torch.exp(coeff)[:, None] * x
+            
+        return mean, std
 
-        mean = torch.bmm(torch.exp(coeff[:, None, None]), x[:, None]).squeeze()
-        var = 1 - torch.exp(2. * coeff)
-        return mean, var
+    def coeff_and_std(self, t, beta_min, beta_max):
+        coeff = -0.25 * t ** 2 * (beta_max - beta_min) - 0.5 * t * beta_min
+        std = 1 - torch.exp(2. * coeff)
+        return coeff, std
 
     def drift_coeff(self, x, t, beta_min, beta_max):
         # def of beta_t from Yang Song's repo score_sde

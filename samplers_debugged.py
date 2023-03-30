@@ -35,10 +35,14 @@ def get_y_t(y, t, marginal_prob_std, A, x):
     # std = marginal_prob_std(t=torch.tensor(t))
     # std = marginal_prob_std(t=ts)
     # perturbed_images = y + z * std
-
-    # y_t = mean_y + std * torch.einsum("ij,bj->bi", A, z)
+    # print(mean_y.shape)
+    # print(std.shape)
+    # print(A.shape)
+    # print(z.shape)
+    # print(torch.einsum("ij,bj->bi", A, z).shape)
+    y_t = mean_y + std[:,None] * torch.einsum("ij,bj->bi", A, z)
     # y_t = mean_y + torch.bmm(std[:, None, None], z[:, None]).squeeze()
-    y_t = mean_y + torch.bmm(std[:, None, None], torch.einsum("ij,bj->bi", A, z)[:, None]).squeeze()
+    # y_t = mean_y + torch.bmm(std[:, None, None], torch.einsum("ij,bj->bi", A, z)[:, None]).squeeze()
 
     return y_t
 
@@ -164,8 +168,8 @@ def condition_on_pat_y_modified(raw_images, x_t, t, marginal_prob_std, A, lbda=0
     # term4 = lbda * torch.matmul(A.T, flat_y_t)
     # term4 = lbda * torch.einsum("ij,bj->bi", A.T, flat_y_t)
 
-   #  term4 = lbda * torch.einsum("ij,bj->bi", A.T, flat_raw_images)
-    term4 = lbda * torch.einsum("ij,bj->bi", A.T, flat_y_t)
+    term4 = lbda * torch.einsum("ij,bj->bi", A.T, flat_raw_images)
+    # term4 = lbda * torch.einsum("ij,bj->bi", A.T, flat_y_t)
 
     x_t_prime = torch.einsum("ij,bj->bi", torch.inverse(term1 + term2), term3 + term4)
 
@@ -399,7 +403,7 @@ def Euler_Maruyama_sampler(score_model,
                            eps=1e-3):
     t = torch.ones(batch_size, device=device)
     init_x = torch.randn(batch_size, 1, 28, 28, device=device) \
-    * marginal_prob_std(t)[:, None, None, None]
+    * marginal_prob_std(torch.ones(1,1,1,1), t)[1][:, None, None, None]
     time_steps = torch.linspace(1., eps, num_steps, device=device)
     step_size = time_steps[0] - time_steps[1]
     x = init_x
@@ -426,7 +430,7 @@ def pc_sampler(score_model,
                device='cuda',
                eps=1e-3):
     t = torch.ones(batch_size, device=device)
-    init_x = torch.randn(batch_size, 1, 28, 28, device=device) * marginal_prob_std(t)[:, None, None, None]
+    init_x = torch.randn(batch_size, 1, 28, 28, device=device) * marginal_prob_std(torch.ones((1,1,1,1), device=device), t)[1][:, None, None, None]
     time_steps = np.linspace(1., eps, num_steps)
     step_size = time_steps[0] - time_steps[1]
     x = init_x
