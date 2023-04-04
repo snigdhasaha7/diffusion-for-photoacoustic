@@ -17,7 +17,9 @@
 """
 
 import torch
-import sde_lib
+from sdes_debugged import VariancePreserving as VPSDE
+from sdes_debugged import SubVariancePreserving as subVPSDE
+from sdes_debugged import VarianceExploding as VESDE
 import numpy as np
 
 
@@ -130,7 +132,7 @@ def get_score_fn(sde, model, train=False, continuous=False):
   """Wraps `score_fn` so that the model output corresponds to a real time-dependent score function.
 
   Args:
-    sde: An `sde_lib.SDE` object that represents the forward SDE.
+    sde: An `sdes_debugged.SDE` object that represents the forward SDE.
     model: A score model.
     train: `True` for training and `False` for evaluation.
     continuous: If `True`, the score-based model is expected to directly take continuous time steps.
@@ -140,10 +142,10 @@ def get_score_fn(sde, model, train=False, continuous=False):
   """
   model_fn = get_model_fn(model, train=train)
 
-  if isinstance(sde, sde_lib.VPSDE) or isinstance(sde, sde_lib.subVPSDE):
+  if isinstance(sde, VPSDE) or isinstance(sde, subVPSDE):
     def score_fn(x, t):
       # Scale neural network output by standard deviation and flip sign
-      if continuous or isinstance(sde, sde_lib.subVPSDE):
+      if continuous or isinstance(sde, subVPSDE):
         # For VP-trained models, t=0 corresponds to the lowest noise level
         # The maximum value of time embedding is assumed to 999 for
         # continuously-trained models.
@@ -159,7 +161,7 @@ def get_score_fn(sde, model, train=False, continuous=False):
       score = -score / std[:, None, None, None]
       return score
 
-  elif isinstance(sde, sde_lib.VESDE):
+  elif isinstance(sde, VESDE):
     def score_fn(x, t):
       if continuous:
         labels = sde.marginal_prob(torch.zeros_like(x), t)[1]
