@@ -60,9 +60,12 @@ class VariancePreserving():
     # TODO
     def marginal_prob_std(self, x, t, beta_min, beta_max):
         coeff = -0.25 * t ** 2 * (beta_max - beta_min) - 0.5 * t * beta_min
-        mean = torch.exp(coeff[:, None, None, None]) * x
-        var = torch.sqrt(1 - torch.exp(2. * coeff))
-        return mean, var
+        std = torch.sqrt(1 - torch.exp(2. * coeff))
+        if len(x.shape) == 4:
+            mean = torch.exp(coeff)[:, None, None, None] * x
+        else:
+            mean = torch.exp(coeff)[:, None] * x
+        return mean, std
 
     def drift_coeff(self, x, t, beta_min, beta_max):
         # def of beta_t from Yang Song's repo score_sde
