@@ -20,9 +20,7 @@ import torch
 import torch.optim as optim
 import numpy as np
 from models import utils as mutils
-from sdes_debugged import VariancePreserving as VPSDE
-from sdes_debugged import SubVariancePreserving as subVPSDE
-from sdes_debugged import VarianceExploding as VESDE
+from sde_lib import VESDE, VPSDE
 
 
 def get_optimizer(config, params):

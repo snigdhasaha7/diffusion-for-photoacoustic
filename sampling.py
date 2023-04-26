@@ -24,9 +24,7 @@ import abc
 
 from models.utils import from_flattened_numpy, to_flattened_numpy, get_score_fn
 from scipy import integrate
-from sdes_debugged import VariancePreserving as VPSDE
-from sdes_debugged import SubVariancePreserving as subVPSDE
-from sdes_debugged import VarianceExploding as VESDE
+import sde_lib
 from models import utils as mutils
 
 _CORRECTORS = {}
@@ -84,7 +82,7 @@ def get_sampling_fn(config, sde, shape, inverse_scaler, eps):
 
   Args:
     config: A `ml_collections.ConfigDict` object that contains all configuration information.
-    sde: A `sdes_debugged.SDE` object that represents the forward SDE.
+    sde: A `sde_lib.SDE` object that represents the forward SDE.
     shape: A sequence of integers representing the expected shape of a single sample.
     inverse_scaler: The inverse data normalizer function.
     eps: A `float` number. The reverse-time SDE is only integrated to `eps` for numerical stability.
@@ -208,7 +206,7 @@ class AncestralSamplingPredictor(Predictor):
 
   def __init__(self, sde, score_fn, probability_flow=False):
     super().__init__(sde, score_fn, probability_flow)
-    if not isinstance(sde, VPSDE) and not isinstance(sde, VESDE):
+    if not isinstance(sde, sde_lib.VPSDE) and not isinstance(sde, sde_lib.VESDE):
       raise NotImplementedError(f"SDE class {sde.__class__.__name__} not yet supported.")
     assert not probability_flow, "Probability flow not supported by ancestral sampling"
 
@@ -235,9 +233,9 @@ class AncestralSamplingPredictor(Predictor):
     return x, x_mean
 
   def update_fn(self, x, t):
-    if isinstance(self.sde, VESDE):
+    if isinstance(self.sde, sde_lib.VESDE):
       return self.vesde_update_fn(x, t)
-    elif isinstance(self.sde, VPSDE):
+    elif isinstance(self.sde, sde_lib.VPSDE):
       return self.vpsde_update_fn(x, t)
 
 
@@ -256,9 +254,9 @@ class NonePredictor(Predictor):
 class LangevinCorrector(Corrector):
   def __init__(self, sde, score_fn, snr, n_steps):
     super().__init__(sde, score_fn, snr, n_steps)
-    if not isinstance(sde, VPSDE) \
-        and not isinstance(sde, VESDE) \
-        and not isinstance(sde, subVPSDE):
+    if not isinstance(sde, sde_lib.VPSDE) \
+        and not isinstance(sde, sde_lib.VESDE) \
+        and not isinstance(sde, sde_lib.subVPSDE):
       raise NotImplementedError(f"SDE class {sde.__class__.__name__} not yet supported.")
 
   def update_fn(self, x, t):
@@ -266,7 +264,7 @@ class LangevinCorrector(Corrector):
     score_fn = self.score_fn
     n_steps = self.n_steps
     target_snr = self.snr
-    if isinstance(sde, VPSDE) or isinstance(sde, subVPSDE):
+    if isinstance(sde, sde_lib.VPSDE) or isinstance(sde, sde_lib.subVPSDE):
       timestep = (t * (sde.N - 1) / sde.T).long()
       alpha = sde.alphas.to(t.device)[timestep]
     else:
@@ -293,9 +291,9 @@ class AnnealedLangevinDynamics(Corrector):
 
   def __init__(self, sde, score_fn, snr, n_steps):
     super().__init__(sde, score_fn, snr, n_steps)
-    if not isinstance(sde, VPSDE) \
-        and not isinstance(sde, VESDE) \
-        and not isinstance(sde, subVPSDE):
+    if not isinstance(sde, sde_lib.VPSDE) \
+        and not isinstance(sde, sde_lib.VESDE) \
+        and not isinstance(sde, sde_lib.subVPSDE):
       raise NotImplementedError(f"SDE class {sde.__class__.__name__} not yet supported.")
 
   def update_fn(self, x, t):
@@ -303,7 +301,7 @@ class AnnealedLangevinDynamics(Corrector):
     score_fn = self.score_fn
     n_steps = self.n_steps
     target_snr = self.snr
-    if isinstance(sde, VPSDE) or isinstance(sde, subVPSDE):
+    if isinstance(sde, sde_lib.VPSDE) or isinstance(sde, sde_lib.subVPSDE):
       timestep = (t * (sde.N - 1) / sde.T).long()
       alpha = sde.alphas.to(t.device)[timestep]
     else:
@@ -360,7 +358,7 @@ def get_pc_sampler(sde, shape, predictor, corrector, inverse_scaler, snr,
   """Create a Predictor-Corrector (PC) sampler.
 
   Args:
-    sde: An `sdes_debugged.SDE` object representing the forward SDE.
+    sde: An `sde_lib.SDE` object representing the forward SDE.
     shape: A sequence of integers. The expected shape of a single sample.
     predictor: A subclass of `sampling.Predictor` representing the predictor algorithm.
     corrector: A subclass of `sampling.Corrector` representing the corrector algorithm.
@@ -419,7 +417,7 @@ def get_ode_sampler(sde, shape, inverse_scaler,
   """Probability flow ODE sampler with the black-box ODE solver.
 
   Args:
-    sde: An `sdes_debugged.SDE` object that represents the forward SDE.
+    sde: An `sde_lib.SDE` object that represents the forward SDE.
     shape: A sequence of integers. The expected shape of a single sample.
     inverse_scaler: The inverse data normalizer.
     denoise: If `True`, add one-step denoising to final samples.
