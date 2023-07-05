@@ -521,6 +521,7 @@ def Euler_Maruyama_sampler(score_model,
 
 def pc_sampler(score_model, 
                marginal_prob_std,
+               im_size,
                diffusion_coeff,
                drift_coeff=None,
                batch_size=64, 
@@ -529,7 +530,7 @@ def pc_sampler(score_model,
                device='cuda',
                eps=1e-3):
     t = torch.ones(batch_size, device=device)
-    init_x = torch.randn(batch_size, 1, 28, 28, device=device) * marginal_prob_std(torch.ones((1,1,1,1), device=device), t)[1][:, None, None, None]
+    init_x = torch.randn(batch_size, 1, im_size, im_size, device=device) * marginal_prob_std(torch.ones((1,1,1,1), device=device), t)[1][:, None, None, None]
     time_steps = np.linspace(1., eps, num_steps)
     step_size = time_steps[0] - time_steps[1]
     x = init_x
