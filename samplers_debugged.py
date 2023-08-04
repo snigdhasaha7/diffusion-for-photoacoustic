@@ -205,6 +205,7 @@ def psnr(clean, noisy):
 
 def pc_denoiser(raw_images,
                score_model,
+               im_size,
                lbda, 
                marginal_prob_std,
                diffusion_coeff,
@@ -230,7 +231,7 @@ def pc_denoiser(raw_images,
 
     # first arg of marg prob does not matter if we only need std
     flat_clean_images = torch.unsqueeze(torch.flatten(clean_images, start_dim=1), dim=2).squeeze()
-    init_x = torch.randn(num_images, 1, 28, 28, device=device) * marginal_prob_std(flat_clean_images, t)[1][:, None, None, None]
+    init_x = torch.randn(num_images, 1, im_size, im_size, device=device) * marginal_prob_std(flat_clean_images, t)[1][:, None, None, None]
     time_steps = np.linspace(1., eps, num_steps)
     step_size = time_steps[0] - time_steps[1]
     x = init_x
