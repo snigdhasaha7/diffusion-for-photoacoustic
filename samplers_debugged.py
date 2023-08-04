@@ -214,6 +214,7 @@ def pc_denoiser(raw_images,
                lbda_schedule='constant',
                lbda_param=1,
                a=0.5,
+               forward_A=None,
                operator_P=None,
                subsampling_L=None,
                transformation_T=None,
@@ -226,7 +227,10 @@ def pc_denoiser(raw_images,
                device='cuda',
                eps=1e-3):
     num_images = len(raw_images)
-    A = torch.matmul(operator_P, torch.matmul(subsampling_L, transformation_T))
+    if forward_A == None:
+        A = torch.matmul(operator_P, torch.matmul(subsampling_L, transformation_T))
+    else:
+        A = forward_A
     t = torch.ones(num_images, device=device)
 
     # first arg of marg prob does not matter if we only need std
