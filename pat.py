@@ -19,6 +19,7 @@
 import numpy as np
 from scipy import signal
 from scipy.fft import fft, ifft
+from tqdm import tqdm
 
 
 
@@ -235,7 +236,7 @@ def deltaThetaCDMMI(xs, ys, px, py, x_r, y_r, R):
 
   return (x_id, y_id, delta_theta)
 
-def forwardMatrixFullRingCDMMI(N_transducer, R_ring, px, py, M, N, dt, N_sample, oversample, padsample, T_min, Band, V_sound):
+def forwardMatrixFullRingCDMMI(N_transducer, R_ring, px, py, M, N, dt, N_sample, oversample, padsample, T_min, center_freq, fwhm, V_sound):
 # This function computes the forward matrix of ring array photoacoustic imaging
 # given the parameters of the system.
 # N_transducer
@@ -259,9 +260,8 @@ def forwardMatrixFullRingCDMMI(N_transducer, R_ring, px, py, M, N, dt, N_sample,
 #             2 * oversample * N_sample points before filtering and downsampling
 # T_min
 #             the time of the first sampling point (time zero is the laser shot)
-# Band
-#             the one side bandwidth (3dB) of the system,
-#             filtering done by hanning window
+# center_freq and fwhm
+#             the center frequency and the full width half maximum of the transducer frequency response
 # V_sound
 #             the speed of sound [m/s]
 # The function will return the forward matrix A and the sample time serie
@@ -293,12 +293,19 @@ def forwardMatrixFullRingCDMMI(N_transducer, R_ring, px, py, M, N, dt, N_sample,
   A = np.zeros([M, N, N_transducer, t_sample.shape[0]])
   # Allocate space for the matrix
 
-  B = int(np.ceil(Band / (1 / dt_oversample / (t_over_sample.shape[0] - 1))))
-  window = np.zeros((t_over_sample.shape[0] - 1))
-  window[0:4 * B + 1] = signal.hann(4 * B + 1)
-  window = np.roll(window, -2 * B)
 
-  for r in range(0, N_transducer):
+  N_oversample = t_over_sample.shape[0] - 1
+  # After taking the derivative, the signal will become this length
+
+  # Now generate the gaussian bandpass filter
+  N_half_oversample = int(np.floor(N_oversample / 2))
+  fft_freq = np.linspace(0, N_half_oversample - 1, N_half_oversample) * 1 / dt_oversample / N_oversample
+  half_filter = np.exp(-(fft_freq - center_freq)**2 / ((fwhm / 2)**2) *np.log(2))
+  filter = np.zeros(N_oversample)
+  filter[0:N_half_oversample] = half_filter
+  filter[-N_half_oversample:] = np.flip(half_filter)
+
+  for r in tqdm(range(0, N_transducer)):
     A_over_sample = np.zeros([M, N, t_over_sample.shape[0]])
     for t in range(0, t_over_sample.shape[0]):
       [x_id, y_id, delta_theta] = deltaThetaCDMMI(xs, ys, px, py, transducer_x[r], transducer_y[r], t_over_sample[t] * V_sound)
@@ -309,10 +316,10 @@ def forwardMatrixFullRingCDMMI(N_transducer, R_ring, px, py, M, N, dt, N_sample,
     # Then take the derivative operation
     # Lowpass filtering using hanning window
     A_over_sample = fft(A_over_sample, axis = -1)
-    A_over_sample = A_over_sample * window
+    A_over_sample = A_over_sample * filter
     A_over_sample = ifft(A_over_sample, axis = -1).real
     A[:, :, [r], :] = A_over_sample[:, :, np.newaxis, oversample + padsample - 2:-padsample:2 * oversample]
-    print("Building equations number %d / %d transducers" %(r + 1, N_transducer))
+    # print("Building equations number %d / %d transducers" %(r + 1, N_transducer))
 
   A = A.reshape((M * N, N_transducer * t_sample.shape[0]))
   return (A, x_sample, y_sample, t_sample)
