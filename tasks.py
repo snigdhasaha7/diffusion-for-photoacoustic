@@ -1,6 +1,7 @@
 import torch
 import random
 from pat import forwardMatrixFullRingCDMMI
+from utils import awgn
 
 # noisy dataset
 class AddGaussianNoise():
@@ -89,9 +90,11 @@ def PAT_forward(images, PAT_config, forward_A=None, add_noise=False, noise=0.0, 
     for i in range(len(images)):
         PAT_images[i] = torch.matmul(A, images[i].reshape((-1, 1)))
         if add_noise:
-          PAT_images[i] = PAT_images[i] + noise * torch.randn_like(PAT_images[i])
+          # PAT_images[i] = PAT_images[i] + noise * torch.randn_like(PAT_images[i])
+          PAT_images[i] = torch.tensor(awgn(PAT_images[i].numpy()))
     if remove_transducers:
         N_transducer = PAT_config[0]
+        N_sample = PAT_config[7]
         PAT_images = PAT_images.reshape(images.shape[0], 1, N_transducer - len(removed_transducers), N_sample)
     else:
         N_transducer = PAT_config[0]
