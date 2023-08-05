@@ -100,4 +100,6 @@ def PAT_forward(images, PAT_config, forward_A=None, add_noise=False, noise=0.0, 
         N_transducer = PAT_config[0]
         PAT_images = PAT_images.reshape(images.shape[0], 1, N_transducer, -1)
 
-    return PAT_images, P, L, T
+    if forward_A == None:
+      return PAT_images, P, L, T
+    return PAT_images
