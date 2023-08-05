@@ -61,26 +61,30 @@ def gaussian_downsampling(images, keep_ratio=0.95):
     return gauss_down_images, P, L, T
 
 # Set up PAT
-def PAT_forward(images, PAT_config, add_noise=False, noise=0.0, remove_transducers=False, removed_transducers=None):
-    A, _, _, _ = forwardMatrixFullRingCDMMI(*PAT_config)
-    # the data acquisition matrix T is A^t
-    T = torch.tensor(A.T, device=images.device).float()
+def PAT_forward(images, PAT_config, forward_A=None, add_noise=False, noise=0.0, remove_transducers=False, removed_transducers=None):
+    if forward_A == None:
+      A, _, _, _ = forwardMatrixFullRingCDMMI(*PAT_config)
+      # the data acquisition matrix T is A^t
+      T = torch.tensor(A.T, device=images.device).float()
 
-    if remove_transducers:
-        # define a reduced T matrix 
-        pixels_to_keep = list(range(0, T.shape[0]))
-        for td in removed_transducers:
-            N_sample = PAT_config[7]
-            for pixel in range(td * N_sample, (td + 1)* N_sample):
-                pixels_to_keep.remove(pixel)
-        pixels_to_keep = torch.tensor(pixels_to_keep, device=images.device)
-        T_red = torch.index_select(T, 0, pixels_to_keep)
-        T = T_red
+      if remove_transducers:
+          # define a reduced T matrix 
+          pixels_to_keep = list(range(0, T.shape[0]))
+          for td in removed_transducers:
+              N_sample = PAT_config[7]
+              for pixel in range(td * N_sample, (td + 1)* N_sample):
+                  pixels_to_keep.remove(pixel)
+          pixels_to_keep = torch.tensor(pixels_to_keep, device=images.device)
+          T_red = torch.index_select(T, 0, pixels_to_keep)
+          T = T_red
 
-    P, L = [torch.eye(T.shape[0], device=images.device)] * 2
+      P, L = [torch.eye(T.shape[0], device=images.device)] * 2
 
-    # apply y = P(L)Tx
-    A = torch.matmul(torch.matmul(P, L), T)
+      # apply y = P(L)Tx
+      A = torch.matmul(torch.matmul(P, L), T)
+    else:
+      A = forward_A
+
     PAT_images = torch.zeros(images.shape[0], A.shape[0], 1, device=images.device)
     for i in range(len(images)):
         PAT_images[i] = torch.matmul(A, images[i].reshape((-1, 1)))
