@@ -38,8 +38,8 @@ def awgn(x, snr=30):
 def limited_view_rmd(N_transducer, N_keep):
   # the parity of N_transducer and N_keep must match
   edge = (N_transducer - N_keep) / 2
-  return [i for i in range(N_transducer) if not (i < edge or i >= (N_transducer - edge))]
+  return [i for i in range(N_transducer) if i < edge or i >= (N_transducer - edge)]
 
 
 def spatial_alias_rmd(N_transducer, skip):
-  return [i for i in range(0, N_transducer, skip)]
+  return [i for i in range(0, N_transducer) if i % skip != 0]
