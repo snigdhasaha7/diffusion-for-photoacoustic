@@ -2,7 +2,16 @@
 
 import numpy as np
 import matplotlib.pyplot as plt 
-from metrics import PSNR 
+from metrics import PSNR
+from torchvision.utils import make_grid
+
+
+def plot_samples(images):
+    sample_grid = make_grid(images, nrow=int(np.sqrt(images.shape[0])))
+    plt.figure(figsize=(6,6))
+    plt.axis('off')
+    plt.imshow(sample_grid.cpu().permute(1, 2, 0).squeeze())
+    plt.show()
 
 
 def plot_before_after(clean_images, imgs_before, imgs_after, title=""):
