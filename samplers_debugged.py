@@ -11,14 +11,6 @@ from scipy.stats import norm
 #          Utils 
 #----------------------------------------------
 
-def plot_images(images):
-    #denoised = denoised.clamp(0.0, 1.0)
-    sample_grid = make_grid(images, nrow=int(np.sqrt(images.shape[0])))
-    plt.figure(figsize=(6,6))
-    plt.axis('off')
-    plt.imshow(sample_grid.cpu().permute(1, 2, 0).squeeze())
-    plt.show()
-
 def get_y_t(y, t, marginal_prob_std, A, x):
     # vector of t
     ts = t * torch.ones(y.shape[0], device=y.device)
