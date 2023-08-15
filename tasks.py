@@ -1,7 +1,7 @@
 import torch
 import random
 from pat import forwardMatrixFullRingCDMMI
-from utils import awgn
+from misc_utils import awgn
 
 # noisy dataset
 class AddGaussianNoise():

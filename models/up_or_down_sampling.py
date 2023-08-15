@@ -7,7 +7,7 @@ import torch.nn as nn
 import torch
 import torch.nn.functional as F
 import numpy as np
-from op import upfirdn2d
+from op.upfirdn2d import upfirdn2d
 
 
 # Function ported from StyleGAN2
