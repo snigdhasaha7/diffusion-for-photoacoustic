@@ -3,6 +3,8 @@ import tqdm
 import numpy as np
 from scipy import integrate
 from torchvision.utils import make_grid
+from torch.nn.functional import pad
+import tqdm.notebook
 import matplotlib.pyplot as plt
 import IPython.display as ipd
 from scipy.stats import norm
@@ -198,14 +200,14 @@ def psnr(clean, noisy):
 def pc_denoiser(raw_images,
                score_model,
                im_size,
+               idf,
                lbda, 
                marginal_prob_std,
                diffusion_coeff,
                drift_coeff=None,
-               task='denoise',
                lbda_schedule='constant',
                lbda_param=1,
-               a=0.5,
+               a=1e-7,
                forward_A=None,
                operator_P=None,
                subsampling_L=None,
@@ -249,15 +251,16 @@ def pc_denoiser(raw_images,
           # Predictor step (Euler-Maruyama)
           # TODO revisit this for VP
           g = diffusion_coeff(batch_time_step)
+          score = score_model(pad(x, (idf,idf,idf,idf)), batch_time_step)[:, :, idf:(im_size+idf), idf:(im_size+idf)]
           if drift_coeff == None:
-              x_mean = x + (g**2)[:, None, None, None] * score_model(x, batch_time_step) * step_size
+              x_mean = x + (g**2)[:, None, None, None] * score * step_size
           else:
               f = drift_coeff(x, batch_time_step)
-              x_mean = x + ( -1 * f + ((g**2)[:, None, None, None] * score_model(x, batch_time_step)) ) * step_size
+              x_mean = x + ( -1 * f + ((g**2)[:, None, None, None] * score) ) * step_size
           x = x_mean + torch.sqrt(g**2 * step_size)[:, None, None, None] * torch.randn_like(x)
 
           # Corrector step (Langevin MCMC)
-          grad = score_model(x, batch_time_step)
+          grad = score_model(pad(x, (idf,idf,idf,idf)), batch_time_step)[:, :, idf:(im_size+idf), idf:(im_size+idf)]
           grad_norm = torch.norm(grad.reshape(grad.shape[0], -1), dim=-1).mean()
           noise_norm = np.sqrt(np.prod(x.shape[1:]))
           langevin_step_size = 2 * (snr * noise_norm / grad_norm)**2
@@ -519,6 +522,7 @@ def Euler_Maruyama_sampler(score_model,
 def pc_sampler(score_model, 
                marginal_prob_std,
                im_size,
+               idf,
                diffusion_coeff,
                drift_coeff=None,
                batch_size=64, 
@@ -527,7 +531,7 @@ def pc_sampler(score_model,
                device='cuda',
                eps=1e-3):
     t = torch.ones(batch_size, device=device)
-    init_x = torch.randn(batch_size, 1, im_size, im_size, device=device) * marginal_prob_std(torch.ones((1,1,1,1), device=device), t)[1][:, None, None, None]
+    init_x = torch.randn(batch_size, 1, im_size + idf, im_size + idf, device=device) * marginal_prob_std(torch.ones((1,1,1,1), device=device), t)[1][:, None, None, None]
     time_steps = np.linspace(1., eps, num_steps)
     step_size = time_steps[0] - time_steps[1]
     x = init_x
@@ -544,15 +548,16 @@ def pc_sampler(score_model,
             # Predictor step (Euler-Maruyama)
             # TODO revisit this for VP
             g = diffusion_coeff(batch_time_step)
+            score = score_model(x, batch_time_step)
             if drift_coeff == None:
-                x_mean = x + (g**2)[:, None, None, None] * score_model(x, batch_time_step) * step_size
+                x_mean = x + (g**2)[:, None, None, None] * score * step_size
             else:
                 f = drift_coeff(x, batch_time_step)
-                x_mean = x + ( -1 * f + ((g**2)[:, None, None, None] * score_model(x, batch_time_step)) ) * step_size
+                x_mean = x + ( -1 * f + ((g**2)[:, None, None, None] * score) ) * step_size
             x = x_mean + torch.sqrt(g**2 * step_size)[:, None, None, None] * torch.randn_like(x)      
 
     # The last step does not include any noise
-    return x_mean
+    return x_mean[:, :, idf:(im_size+idf), idf:(im_size+idf)]
 
 def ode_sampler(score_model,
                 marginal_prob_std,
