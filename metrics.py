@@ -24,4 +24,15 @@ def avg_PSNR(GT, preds):
 
 # higher --> more similar images
 def SSIM(original, noisy):
+    if not isinstance(original, np.ndarray):
+      original = original.cpu().numpy()
+    if not isinstance(noisy, np.ndarray):
+      noisy = noisy.cpu().numpy()
     return ssim(original, noisy)
+
+def avg_SSIM(GT, preds):
+  # GT and preds must have the same shape
+  ssims = []
+  for i in range(len(GT)):
+    ssims.append(SSIM(GT[i], preds[i]))
+  return sum(ssims) / len(ssims)
