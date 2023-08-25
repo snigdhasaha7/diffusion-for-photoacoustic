@@ -1,3 +1,4 @@
+import time
 import torch
 import tqdm
 import numpy as np
@@ -13,30 +14,48 @@ from scipy.stats import norm
 #          Utils 
 #----------------------------------------------
 
+# def get_y_t(y, t, marginal_prob_std, A, x):
+#     # vector of t
+#     ts = t * torch.ones(y.shape[0], device=y.device)
+#     # ts = ts[:, None, None, None]
+
+#     # get flattened y
+#     flat_y = torch.unsqueeze(torch.flatten(y, start_dim=1), dim=2).squeeze()
+    
+#     # sample some noise
+#     z = torch.randn_like(x)
+
+#     # perturb at level t
+#     mean_y, std = marginal_prob_std(flat_y, ts)
+#     # std = marginal_prob_std(t=torch.tensor(t))
+#     # std = marginal_prob_std(t=ts)
+#     # perturbed_images = y + z * std
+#     # print(mean_y.shape)
+#     # print(std.shape)
+#     # print(A.shape)
+#     # print(z.shape)
+#     # print(torch.einsum("ij,bj->bi", A, z).shape)
+#     y_t = mean_y + std[:,None] * torch.einsum("ij,bj->bi", A, z)
+#     # y_t = mean_y + torch.bmm(std[:, None, None], z[:, None]).squeeze()
+#     # y_t = mean_y + torch.bmm(std[:, None, None], torch.einsum("ij,bj->bi", A, z)[:, None]).squeeze()
+
+#     return y_t
+
 def get_y_t(y, t, marginal_prob_std, A, x):
     # vector of t
     ts = t * torch.ones(y.shape[0], device=y.device)
     # ts = ts[:, None, None, None]
 
     # get flattened y
-    flat_y = torch.unsqueeze(torch.flatten(y, start_dim=1), dim=2).squeeze()
+    # flat_y = torch.unsqueeze(torch.flatten(y, start_dim=1), dim=2).squeeze()
     
     # sample some noise
     z = torch.randn_like(x)
 
     # perturb at level t
-    mean_y, std = marginal_prob_std(flat_y, ts)
-    # std = marginal_prob_std(t=torch.tensor(t))
-    # std = marginal_prob_std(t=ts)
-    # perturbed_images = y + z * std
-    # print(mean_y.shape)
-    # print(std.shape)
-    # print(A.shape)
-    # print(z.shape)
-    # print(torch.einsum("ij,bj->bi", A, z).shape)
+    mean_y, std = marginal_prob_std(y, ts)
+
     y_t = mean_y + std[:,None] * torch.einsum("ij,bj->bi", A, z)
-    # y_t = mean_y + torch.bmm(std[:, None, None], z[:, None]).squeeze()
-    # y_t = mean_y + torch.bmm(std[:, None, None], torch.einsum("ij,bj->bi", A, z)[:, None]).squeeze()
 
     return y_t
 
@@ -136,56 +155,86 @@ def condition_on_pat_y(raw_images, x_t, t, marginal_prob_std, operator_P, subsam
     x_t_prime = torch.reshape(x_t_prime, x_t.shape)
     return x_t_prime
 
-def condition_on_pat_y_modified(raw_images, x_t, t, marginal_prob_std, A, lbda=0.5, lbda_param=1, lbda_schedule='constant', a=1e-7):
+# def condition_on_pat_y_modified(raw_images, x_t, t, marginal_prob_std, A, lbda=0.5, lbda_param=1, lbda_schedule='constant', a=1e-7):
+#     # y_t = get_y_t(raw_images, t, marginal_prob_std)
+#     lbda = lbda_scheduler(t, lbda, schedule=lbda_schedule, param=lbda_param)
+
+#     # turn images into column vectors
+#     # flat_y_t = torch.unsqueeze(torch.flatten(y_t, start_dim=1), dim=2).squeeze()
+#     flat_x_t = torch.unsqueeze(torch.flatten(x_t, start_dim=1), dim=2).squeeze()
+#     flat_y_t = get_y_t(raw_images, t, marginal_prob_std, A, flat_x_t)
+#     flat_raw_images = torch.unsqueeze(torch.flatten(raw_images, start_dim=1), dim=2).squeeze()
+
+#     # original tikhonov, conditioning method 1
+#     # x_prime is a weighted function of x and y
+#     # term1 = torch.inverse(torch.matmul(A.T, A) + a * torch.eye(A.shape[1], device=A.device))
+#     # term2 = torch.matmul(A.T, (1 - lbda) * torch.matmul(A, flat_x_t))
+#     # term3 = torch.matmul(A.T, lbda * flat_y_t)
+#     # x_t_prime = torch.matmul(term1, term2 + term3)
+
+
+#     # modified tikhonov, conditioning method 2
+#     # term1 = lbda * (torch.matmul(A.T, A) + a * torch.eye(A.shape[1], device=A.device))
+#     term1 = lbda * torch.matmul(A.T, A)
+#     term2 = (1 - lbda) * torch.eye(A.T.size(0), device = A.device)
+#     term3 = (1 - lbda) * flat_x_t
+#     # term4 = lbda * torch.matmul(A.T, flat_y_t)
+#     # term4 = lbda * torch.einsum("ij,bj->bi", A.T, flat_y_t)
+
+#     # term4 = lbda * torch.einsum("ij,bj->bi", A.T, flat_raw_images)
+#     term4 = lbda * torch.einsum("ij,bj->bi", A.T, flat_y_t)
+
+#     x_t_prime = torch.einsum("ij,bj->bi", torch.inverse(term1 + term2), term3 + term4)
+
+
+#     l2_err = torch.nn.MSELoss()
+#     x_err = l2_err(torch.einsum("ij,bj->bi", A, flat_x_t), flat_raw_images).item()
+#     xy_err = l2_err(torch.einsum("ij,bj->bi", A, x_t_prime), flat_raw_images).item()
+
+
+#     # berthy's thing, conditioning method 3
+#     # A_pinv = torch.linalg.pinv(A)
+#     # term1B = (1 - lbda) * flat_x_t
+#     # term2B = lbda * torch.matmul(A_pinv, flat_y_t)
+#     # B = term1B + term2B
+#     # term1A = (1 - lbda) * torch.eye(A.T.size(0), device=A.device) 
+#     # term2A = lbda * torch.matmul(A_pinv, A)
+#     # A = term1A + term2A
+#     # x_t_prime = torch.linalg.solve(A, B)
+
+
+#     x_t_prime = torch.reshape(x_t_prime, x_t.shape)
+#     return x_t_prime, lbda, x_err, xy_err
+
+def condition_on_pat_y_modified(y, x_t, t, marginal_prob_std, A, ATA_inv, lbda=0.5, lbda_param=1, lbda_schedule='constant', a=1e-7):
     # y_t = get_y_t(raw_images, t, marginal_prob_std)
-    lbda = lbda_scheduler(t, lbda, schedule=lbda_schedule, param=lbda_param)
+    # lbda = lbda_scheduler(t, lbda, schedule=lbda_schedule, param=lbda_param)
 
     # turn images into column vectors
-    # flat_y_t = torch.unsqueeze(torch.flatten(y_t, start_dim=1), dim=2).squeeze()
-    flat_x_t = torch.unsqueeze(torch.flatten(x_t, start_dim=1), dim=2).squeeze()
-    flat_y_t = get_y_t(raw_images, t, marginal_prob_std, A, flat_x_t)
-    flat_raw_images = torch.unsqueeze(torch.flatten(raw_images, start_dim=1), dim=2).squeeze()
-
-    # original tikhonov, conditioning method 1
-    # x_prime is a weighted function of x and y
-    # term1 = torch.inverse(torch.matmul(A.T, A) + a * torch.eye(A.shape[1], device=A.device))
-    # term2 = torch.matmul(A.T, (1 - lbda) * torch.matmul(A, flat_x_t))
-    # term3 = torch.matmul(A.T, lbda * flat_y_t)
-    # x_t_prime = torch.matmul(term1, term2 + term3)
-
+    # flat_x_t = torch.unsqueeze(torch.flatten(x_t, start_dim=1), dim=2).squeeze()
+    flat_x_t = x_t.view((x_t.shape[0], -1))
+    flat_y_t = get_y_t(y, t, marginal_prob_std, A, flat_x_t)
+    # flat_raw_images = torch.unsqueeze(torch.flatten(raw_images, start_dim=1), dim=2).squeeze()
 
     # modified tikhonov, conditioning method 2
-    # term1 = lbda * (torch.matmul(A.T, A) + a * torch.eye(A.shape[1], device=A.device))
-    term1 = lbda * torch.matmul(A.T, A)
-    term2 = (1 - lbda) * torch.eye(A.T.size(0), device = A.device)
+    # term1 = lbda * torch.matmul(A.T, A)
+    # term2 = (1 - lbda) * torch.eye(A.T.size(0), device = A.device)
+    # ATA_inv = torch.inverse(term1 + term2)
     term3 = (1 - lbda) * flat_x_t
-    # term4 = lbda * torch.matmul(A.T, flat_y_t)
-    # term4 = lbda * torch.einsum("ij,bj->bi", A.T, flat_y_t)
-
-    # term4 = lbda * torch.einsum("ij,bj->bi", A.T, flat_raw_images)
     term4 = lbda * torch.einsum("ij,bj->bi", A.T, flat_y_t)
 
-    x_t_prime = torch.einsum("ij,bj->bi", torch.inverse(term1 + term2), term3 + term4)
-
+    x_t_prime = torch.einsum("ij,bj->bi", ATA_inv, term3 + term4)
 
     l2_err = torch.nn.MSELoss()
-    x_err = l2_err(torch.einsum("ij,bj->bi", A, flat_x_t), flat_raw_images).item()
-    xy_err = l2_err(torch.einsum("ij,bj->bi", A, x_t_prime), flat_raw_images).item()
+    # x_err = l2_err(torch.einsum("ij,bj->bi", A, flat_x_t), y).item()
+    # xy_err = l2_err(torch.einsum("ij,bj->bi", A, x_t_prime), y).item()
+    x_err = np.nan
+    xy_err = np.nan
 
-
-    # berthy's thing, conditioning method 3
-    # A_pinv = torch.linalg.pinv(A)
-    # term1B = (1 - lbda) * flat_x_t
-    # term2B = lbda * torch.matmul(A_pinv, flat_y_t)
-    # B = term1B + term2B
-    # term1A = (1 - lbda) * torch.eye(A.T.size(0), device=A.device) 
-    # term2A = lbda * torch.matmul(A_pinv, A)
-    # A = term1A + term2A
-    # x_t_prime = torch.linalg.solve(A, B)
-
-
-    x_t_prime = torch.reshape(x_t_prime, x_t.shape)
+    # x_t_prime = torch.reshape(x_t_prime, x_t.shape)
+    x_t_prime = x_t_prime.view(x_t.shape)
     return x_t_prime, lbda, x_err, xy_err
+
 
 def psnr(clean, noisy):
     # our range of values is [0.,1.]
@@ -220,16 +269,21 @@ def pc_denoiser(raw_images,
                snr=0.16,                
                device='cuda',
                eps=1e-3):
+    score_model_opt = torch.compile(score_model)
     num_images = len(raw_images)
     if forward_A == None:
         A = torch.matmul(operator_P, torch.matmul(subsampling_L, transformation_T))
     else:
         A = forward_A
     t = torch.ones(num_images, device=device)
+    term1 = lbda * torch.matmul(A.T, A)
+    term2 = (1 - lbda) * torch.eye(A.T.size(0), device = A.device)
+    ATA_inv = torch.inverse(term1 + term2)
+    y = raw_images.view((num_images, -1))
 
     # first arg of marg prob does not matter if we only need std
-    flat_clean_images = torch.unsqueeze(torch.flatten(clean_images, start_dim=1), dim=2).squeeze()
-    init_x = torch.randn(num_images, 1, im_size, im_size, device=device) * marginal_prob_std(flat_clean_images, t)[1][:, None, None, None]
+    # flat_clean_images = torch.unsqueeze(torch.flatten(clean_images, start_dim=1), dim=2).squeeze()
+    init_x = torch.randn(num_images, 1, im_size, im_size, device=device) * marginal_prob_std(torch.ones((num_images, 1), device=device), t)[1][:, None, None, None]
     time_steps = np.linspace(1., eps, num_steps)
     step_size = time_steps[0] - time_steps[1]
     x = init_x
@@ -244,13 +298,16 @@ def pc_denoiser(raw_images,
         for time_step in tqdm.notebook.tqdm(time_steps):      
           batch_time_step = torch.ones(num_images, device=device) * time_step
 
-          x, lbda_t, x_err, xy_err = condition_on_pat_y_modified(raw_images, x, time_step, marginal_prob_std, A, lbda, lbda_param, lbda_schedule, a)
+          # start_time = time.perf_counter()
+          x, lbda_t, x_err, xy_err = condition_on_pat_y_modified(y, x, time_step, marginal_prob_std, A, ATA_inv, lbda, lbda_param, lbda_schedule, a)
+          # print(f'y step: {time.perf_counter() - start_time}')
           x_errors.append(x_err)
           x_with_y_errors.append(xy_err)      
 
           # Predictor step (Euler-Maruyama)
           # TODO revisit this for VP
           g = diffusion_coeff(batch_time_step)
+          # start_time = time.perf_counter()
           score = score_model(pad(x, (idf,idf,idf,idf)), batch_time_step)[:, :, idf:(im_size+idf), idf:(im_size+idf)]
           if drift_coeff == None:
               x_mean = x + (g**2)[:, None, None, None] * score * step_size
@@ -264,7 +321,8 @@ def pc_denoiser(raw_images,
           grad_norm = torch.norm(grad.reshape(grad.shape[0], -1), dim=-1).mean()
           noise_norm = np.sqrt(np.prod(x.shape[1:]))
           langevin_step_size = 2 * (snr * noise_norm / grad_norm)**2
-          x = x + langevin_step_size * grad + torch.sqrt(2 * langevin_step_size) * torch.randn_like(x)            
+          x = x + langevin_step_size * grad + torch.sqrt(2 * langevin_step_size) * torch.randn_like(x)  
+          # print(f'score step: {time.perf_counter() - start_time}')          
           
     # The last step does not include any noise
     if report_PSNR == True:
