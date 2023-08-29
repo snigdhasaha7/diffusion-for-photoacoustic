@@ -14,7 +14,7 @@ def PSNR(original, noisy, data_range=1):
       original = original.cpu().numpy()
     if not isinstance(noisy, np.ndarray):
       noisy = noisy.cpu().numpy()
-    return psnr(original, noisy / np.max(noisy), data_range=data_range)
+    return psnr(original, noisy, data_range=data_range)
 
 def avg_PSNR(GT, preds):
   # GT and preds must have the same shape
