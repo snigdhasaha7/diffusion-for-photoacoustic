@@ -9,12 +9,12 @@ def pixel_to_pixel_MSE(original, noisy):
     return np.mean((original - noisy)**2)
 
 # higher --> more similar images
-def PSNR(original, noisy):
+def PSNR(original, noisy, data_range=1):
     if not isinstance(original, np.ndarray):
       original = original.cpu().numpy()
     if not isinstance(noisy, np.ndarray):
       noisy = noisy.cpu().numpy()
-    return psnr(original, noisy)
+    return psnr(original, noisy, data_range=data_range)
 
 def avg_PSNR(GT, preds):
   # GT and preds must have the same shape
